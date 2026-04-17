@@ -1,0 +1,238 @@
+<div class="page-container">
+  <div class="page-header">
+    <div class="header-info">
+      <h2>Órdenes de Compra</h2>
+      <p>Consulta las órdenes de compra por proveedor y rango de fechas</p>
+    </div>
+  </div>
+
+  <div class="error-message" *ngIf="error">
+    <span class="material-icons">error</span>
+    {{ error }}
+    <button class="close-btn" (click)="error = ''">
+      <span class="material-icons">close</span>
+    </button>
+  </div>
+
+  <!-- Filtros obligatorios -->
+  <div class="filters-card">
+    <div class="filters-header">
+      <span class="material-icons">filter_alt</span>
+      <h4>Filtros de búsqueda</h4>
+      <span class="required-label">* Todos los campos son obligatorios</span>
+    </div>
+    <div class="filters-grid">
+      <div class="filter-group">
+        <label>Proveedor *</label>
+        <select [(ngModel)]="selectedProviderId" [disabled]="loadingProviders">
+          <option [ngValue]="null">{{ loadingProviders ? 'Cargando...' : '-- Seleccione proveedor --' }}</option>
+          <option *ngFor="let provider of providers" [ngValue]="provider.providerId">
+            {{ provider.enterpriseName }}
+          </option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Fecha Inicio *</label>
+        <input type="date" [(ngModel)]="startDate">
+      </div>
+      <div class="filter-group">
+        <label>Fecha Fin *</label>
+        <input type="date" [(ngModel)]="endDate">
+      </div>
+      <div class="filter-action">
+        <button class="btn-search" [disabled]="!canSearch() || loading" (click)="searchOrders()">
+          <span class="material-icons">search</span>
+          Buscar Órdenes
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla de resultados -->
+  <div class="table-card" *ngIf="hasSearched">
+    <div class="table-toolbar">
+      <div class="toolbar-info">
+        <span class="result-count" *ngIf="totalCount > 0">
+          {{ totalCount }} orden{{ totalCount !== 1 ? 'es' : '' }} encontrada{{ totalCount !== 1 ? 's' : '' }}
+        </span>
+        <span class="result-count" *ngIf="totalCount === 0 && !loading">
+          Sin resultados
+        </span>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn-icon" (click)="loadOrders()" title="Recargar">
+          <span class="material-icons">refresh</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <div class="loading-overlay" *ngIf="loading">
+        <div class="spinner"></div>
+        <span>Cargando...</span>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th></th>
+            <th>ID Orden</th>
+            <th>Cliente</th>
+            <th>Estado</th>
+            <th>Método de Pago</th>
+            <th>Total</th>
+            <th>Fecha Entrega</th>
+            <th>Dirección</th>
+            <th>Creada</th>
+          </tr>
+        </thead>
+        <tbody>
+          <ng-container *ngFor="let order of orders">
+            <tr [class.expanded]="expandedOrderId === order.id">
+              <td>
+                <button
+                  class="btn-expand"
+                  (click)="toggleDetails(order.id)"
+                  [title]="expandedOrderId === order.id ? 'Ocultar detalles' : 'Ver detalles'">
+                  <span class="material-icons">
+                    {{ expandedOrderId === order.id ? 'expand_less' : 'expand_more' }}
+                  </span>
+                </button>
+              </td>
+              <td>
+                <span class="order-id">{{ order.id }}</span>
+              </td>
+              <td>
+                <span class="client-id">Cliente #{{ order.clientId }}</span>
+              </td>
+              <td>
+                <span class="purchase-state" [ngClass]="getPurchaseStateClass(order.purchaseState)">
+                  {{ order.purchaseState }}
+                </span>
+              </td>
+              <td>{{ order.paymentMethod }}</td>
+              <td>
+                <span class="total-amount">${{ order.total | number:'1.2-2' }}</span>
+              </td>
+              <td>
+                {{ order.deliveryDate ? (order.deliveryDate | date:'dd/MM/yyyy') : '—' }}
+              </td>
+              <td>
+                <span class="address-text" [title]="order.mailingAddress">
+                  {{ order.mailingAddress }}
+                </span>
+              </td>
+              <td>
+                {{ order.createdAt | date:'dd/MM/yyyy HH:mm' }}
+              </td>
+            </tr>
+            <!-- Fila expandible: Order Details -->
+            <tr class="detail-row" *ngIf="expandedOrderId === order.id">
+              <td colspan="9">
+                <div class="order-details-panel">
+                  <div class="details-header">
+                    <span class="material-icons">receipt_long</span>
+                    <h5>Detalles de la Orden</h5>
+                  </div>
+                  <div class="detail-info-row" *ngIf="order.observations">
+                    <strong>Observaciones:</strong> {{ order.observations }}
+                  </div>
+                  <div *ngIf="order.orderDetails && order.orderDetails.length > 0">
+                    <table class="details-table">
+                      <thead>
+                        <tr>
+                          <th>Imagen</th>
+                          <th>Producto</th>
+                          <th>SKU</th>
+                          <th>Marca</th>
+                          <th>Cantidad</th>
+                          <th>Precio Unit.</th>
+                          <th>Cuotas</th>
+                          <th>Interés</th>
+                          <th>Precio/Cuota</th>
+                          <th>Descuento</th>
+                          <th>Impuestos</th>
+                          <th>Subtotal</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr *ngFor="let detail of order.orderDetails">
+                          <td>
+                            <img
+                              *ngIf="detail.productImg"
+                              [src]="detail.productImg"
+                              [alt]="detail.productName"
+                              class="detail-product-img">
+                            <span *ngIf="!detail.productImg" class="material-icons no-img-icon">image</span>
+                          </td>
+                          <td>
+                            <div class="product-name">{{ detail.productName || '—' }}</div>
+                            <small class="product-id-badge">{{ detail.productId }}</small>
+                          </td>
+                          <td>{{ detail.sku || '—' }}</td>
+                          <td>{{ detail.brand || '—' }}</td>
+                          <td>{{ detail.quantity }}</td>
+                          <td>${{ detail.priceUnit | number:'1.2-2' }}</td>
+                          <td>{{ detail.cantCuotas }}</td>
+                          <td>{{ detail.interes }}%</td>
+                          <td>${{ detail.precioxCuota | number:'1.2-2' }}</td>
+                          <td>${{ detail.customDiscount | number:'1.2-2' }}</td>
+                          <td>${{ detail.taxes | number:'1.2-2' }}</td>
+                          <td class="subtotal-cell">${{ detail.subtotal | number:'1.2-2' }}</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="no-details" *ngIf="!order.orderDetails || order.orderDetails.length === 0">
+                    <span class="material-icons">info_outline</span>
+                    <span>Esta orden no tiene detalles registrados</span>
+                  </div>
+                </div>
+              </td>
+            </tr>
+          </ng-container>
+          <tr *ngIf="orders.length === 0 && !loading">
+            <td colspan="9" class="empty-state">
+              <span class="material-icons">receipt_long</span>
+              <p>No se encontraron órdenes con los filtros seleccionados</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination" *ngIf="totalPages > 1">
+      <div class="pagination-info">
+        Página {{ currentPage }} de {{ totalPages }}
+      </div>
+      <div class="pagination-controls">
+        <button
+          class="page-btn"
+          [disabled]="currentPage === 1"
+          (click)="changePage(currentPage - 1)">
+          <span class="material-icons">chevron_left</span>
+        </button>
+        <button
+          *ngFor="let page of getPages()"
+          class="page-btn"
+          [class.active]="page === currentPage"
+          (click)="changePage(page)">
+          {{ page }}
+        </button>
+        <button
+          class="page-btn"
+          [disabled]="currentPage === totalPages"
+          (click)="changePage(currentPage + 1)">
+          <span class="material-icons">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Estado inicial -->
+  <div class="initial-state" *ngIf="!hasSearched">
+    <span class="material-icons">receipt_long</span>
+    <h3>Seleccione los filtros para buscar órdenes</h3>
+    <p>Elija un proveedor y un rango de fechas, luego presione "Buscar Órdenes"</p>
+  </div>
+</div>

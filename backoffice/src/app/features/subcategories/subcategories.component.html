@@ -1,0 +1,192 @@
+<div class="page-container">
+  <div class="page-header">
+    <div class="header-info">
+      <h2>Subcategorías</h2>
+      <p>Gestiona las subcategorías de productos del marketplace</p>
+    </div>
+    <button class="btn-primary" (click)="openCreateModal()">
+      <span class="material-icons">add</span>
+      Nueva Subcategoría
+    </button>
+  </div>
+
+  <div class="error-message" *ngIf="error">
+    <span class="material-icons">error</span>
+    {{ error }}
+    <button class="close-btn" (click)="error = ''">
+      <span class="material-icons">close</span>
+    </button>
+  </div>
+
+  <div class="table-card">
+    <div class="table-toolbar">
+      <div class="toolbar-filters">
+        <div class="search-box">
+          <span class="material-icons">search</span>
+          <input 
+            type="text" 
+            placeholder="Buscar subcategorías..."
+            [(ngModel)]="searchTerm"
+            (input)="onSearch()">
+        </div>
+        <div class="filter-select">
+          <select [(ngModel)]="filterCategoryId" (change)="onFilterCategory()">
+            <option [ngValue]="null">Todas las categorías</option>
+            <option *ngFor="let cat of categories" [ngValue]="cat.id">{{ cat.name }}</option>
+          </select>
+        </div>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn-icon" (click)="loadSubcategories()" title="Recargar">
+          <span class="material-icons">refresh</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <div class="loading-overlay" *ngIf="loading">
+        <div class="spinner"></div>
+        <span>Cargando...</span>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Categoría</th>
+            <th>Descripción</th>
+            <th>Estado</th>
+            <th>Fecha Creación</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let subcategory of filteredSubcategories">
+            <td>{{ subcategory.id }}</td>
+            <td>
+              <span class="subcategory-name">{{ subcategory.name }}</span>
+            </td>
+            <td>
+              <span class="category-badge">{{ getCategoryName(subcategory.categoryId) }}</span>
+            </td>
+            <td class="description-cell">{{ subcategory.description }}</td>
+            <td>
+              <span class="status-badge" [class.active]="subcategory.state" [class.inactive]="!subcategory.state">
+                {{ subcategory.state ? 'Activo' : 'Inactivo' }}
+              </span>
+            </td>
+            <td>{{ subcategory.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
+            <td>
+              <div class="action-buttons">
+                <button class="btn-action edit" (click)="openEditModal(subcategory)" title="Editar">
+                  <span class="material-icons">edit</span>
+                </button>
+                <button class="btn-action delete" (click)="confirmDelete(subcategory)" title="Eliminar">
+                  <span class="material-icons">delete</span>
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr *ngIf="filteredSubcategories.length === 0 && !loading">
+            <td colspan="7" class="empty-state">
+              <span class="material-icons">inbox</span>
+              <p>No se encontraron subcategorías</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination" *ngIf="totalPages > 1">
+      <button 
+        class="page-btn" 
+        [disabled]="currentPage === 1"
+        (click)="changePage(currentPage - 1)">
+        <span class="material-icons">chevron_left</span>
+      </button>
+      <button 
+        *ngFor="let page of getPages()" 
+        class="page-btn"
+        [class.active]="page === currentPage"
+        (click)="changePage(page)">
+        {{ page }}
+      </button>
+      <button 
+        class="page-btn" 
+        [disabled]="currentPage === totalPages"
+        (click)="changePage(currentPage + 1)">
+        <span class="material-icons">chevron_right</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Crear/Editar -->
+<div class="modal-overlay" *ngIf="showModal" (click)="closeModal()">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>{{ modalMode === 'create' ? 'Nueva Subcategoría' : 'Editar Subcategoría' }}</h3>
+      <button class="close-btn" (click)="closeModal()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="category">Categoría</label>
+        <select id="category" [(ngModel)]="formData.categoryId">
+          <option *ngFor="let cat of categories" [ngValue]="cat.id">{{ cat.name }}</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="name">Nombre</label>
+        <input 
+          type="text" 
+          id="name" 
+          [(ngModel)]="formData.name"
+          placeholder="Nombre de la subcategoría">
+      </div>
+      <div class="form-group">
+        <label for="description">Descripción</label>
+        <textarea 
+          id="description" 
+          [(ngModel)]="formData.description"
+          placeholder="Descripción de la subcategoría"
+          rows="3"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="formData.state">
+          <span class="checkmark"></span>
+          Estado Activo
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="closeModal()">Cancelar</button>
+      <button class="btn-primary" (click)="saveSubcategory()">
+        {{ modalMode === 'create' ? 'Crear' : 'Guardar' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmar Eliminación -->
+<div class="modal-overlay" *ngIf="showDeleteConfirm" (click)="cancelDelete()">
+  <div class="modal modal-sm" (click)="$event.stopPropagation()">
+    <div class="modal-header danger">
+      <h3>Confirmar Eliminación</h3>
+      <button class="close-btn" (click)="cancelDelete()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p>¿Estás seguro de que deseas eliminar la subcategoría <strong>{{ subcategoryToDelete?.name }}</strong>?</p>
+      <p class="warning-text">Esta acción no se puede deshacer.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="cancelDelete()">Cancelar</button>
+      <button class="btn-danger" (click)="deleteSubcategory()">Eliminar</button>
+    </div>
+  </div>
+</div>

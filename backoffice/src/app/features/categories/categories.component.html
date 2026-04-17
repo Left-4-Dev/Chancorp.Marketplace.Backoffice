@@ -1,0 +1,174 @@
+<div class="page-container">
+  <div class="page-header">
+    <div class="header-info">
+      <h2>Categorías</h2>
+      <p>Gestiona las categorías de productos del marketplace</p>
+    </div>
+    <button class="btn-primary" (click)="openCreateModal()">
+      <span class="material-icons">add</span>
+      Nueva Categoría
+    </button>
+  </div>
+
+  <div class="error-message" *ngIf="error">
+    <span class="material-icons">error</span>
+    {{ error }}
+    <button class="close-btn" (click)="error = ''">
+      <span class="material-icons">close</span>
+    </button>
+  </div>
+
+  <div class="table-card">
+    <div class="table-toolbar">
+      <div class="search-box">
+        <span class="material-icons">search</span>
+        <input 
+          type="text" 
+          placeholder="Buscar categorías..."
+          [(ngModel)]="searchTerm"
+          (input)="onSearch()">
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn-icon" (click)="loadCategories()" title="Recargar">
+          <span class="material-icons">refresh</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <div class="loading-overlay" *ngIf="loading">
+        <div class="spinner"></div>
+        <span>Cargando...</span>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Nombre</th>
+            <th>Descripción</th>
+            <th>Estado</th>
+            <th>Fecha Creación</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let category of filteredCategories">
+            <td>{{ category.id }}</td>
+            <td>
+              <span class="category-name">{{ category.name }}</span>
+            </td>
+            <td class="description-cell">{{ category.description }}</td>
+            <td>
+              <span class="status-badge" [class.active]="category.state" [class.inactive]="!category.state">
+                {{ category.state ? 'Activo' : 'Inactivo' }}
+              </span>
+            </td>
+            <td>{{ category.createdAt | date:'dd/MM/yyyy HH:mm' }}</td>
+            <td>
+              <div class="action-buttons">
+                <button class="btn-action edit" (click)="openEditModal(category)" title="Editar">
+                  <span class="material-icons">edit</span>
+                </button>
+                <button class="btn-action delete" (click)="confirmDelete(category)" title="Eliminar">
+                  <span class="material-icons">delete</span>
+                </button>
+              </div>
+            </td>
+          </tr>
+          <tr *ngIf="filteredCategories.length === 0 && !loading">
+            <td colspan="6" class="empty-state">
+              <span class="material-icons">inbox</span>
+              <p>No se encontraron categorías</p>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="pagination" *ngIf="totalPages > 1">
+      <button 
+        class="page-btn" 
+        [disabled]="currentPage === 1"
+        (click)="changePage(currentPage - 1)">
+        <span class="material-icons">chevron_left</span>
+      </button>
+      <button 
+        *ngFor="let page of getPages()" 
+        class="page-btn"
+        [class.active]="page === currentPage"
+        (click)="changePage(page)">
+        {{ page }}
+      </button>
+      <button 
+        class="page-btn" 
+        [disabled]="currentPage === totalPages"
+        (click)="changePage(currentPage + 1)">
+        <span class="material-icons">chevron_right</span>
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Crear/Editar -->
+<div class="modal-overlay" *ngIf="showModal" (click)="closeModal()">
+  <div class="modal" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>{{ modalMode === 'create' ? 'Nueva Categoría' : 'Editar Categoría' }}</h3>
+      <button class="close-btn" (click)="closeModal()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label for="name">Nombre</label>
+        <input 
+          type="text" 
+          id="name" 
+          [(ngModel)]="formData.name"
+          placeholder="Nombre de la categoría">
+      </div>
+      <div class="form-group">
+        <label for="description">Descripción</label>
+        <textarea 
+          id="description" 
+          [(ngModel)]="formData.description"
+          placeholder="Descripción de la categoría"
+          rows="3"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="checkbox-label">
+          <input type="checkbox" [(ngModel)]="formData.state">
+          <span class="checkmark"></span>
+          Estado Activo
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="closeModal()">Cancelar</button>
+      <button class="btn-primary" (click)="saveCategory()">
+        {{ modalMode === 'create' ? 'Crear' : 'Guardar' }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmar Eliminación -->
+<div class="modal-overlay" *ngIf="showDeleteConfirm" (click)="cancelDelete()">
+  <div class="modal modal-sm" (click)="$event.stopPropagation()">
+    <div class="modal-header danger">
+      <h3>Confirmar Eliminación</h3>
+      <button class="close-btn" (click)="cancelDelete()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p>¿Estás seguro de que deseas eliminar la categoría <strong>{{ categoryToDelete?.name }}</strong>?</p>
+      <p class="warning-text">Esta acción no se puede deshacer.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="cancelDelete()">Cancelar</button>
+      <button class="btn-danger" (click)="deleteCategory()">Eliminar</button>
+    </div>
+  </div>
+</div>

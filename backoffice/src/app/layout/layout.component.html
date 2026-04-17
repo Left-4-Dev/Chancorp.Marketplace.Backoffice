@@ -1,0 +1,23 @@
+<div class="layout-container">
+  <app-sidebar #sidebar></app-sidebar>
+  <main class="main-content" [class.sidebar-collapsed]="sidebar.isCollapsed">
+    <header class="top-header">
+      <div class="header-left">
+        <h1 class="page-title">{{ roleService.isAdmin ? 'Panel de Administración' : 'Panel de Proveedor' }}</h1>
+      </div>
+      <div class="header-right">
+        <div class="search-box">
+          <span class="material-icons">search</span>
+          <input type="text" placeholder="Buscar...">
+        </div>
+        <!-- <button class="notification-btn">
+          <span class="material-icons">notifications</span>
+          <span class="badge">3</span>
+        </button> -->
+      </div>
+    </header>
+    <div class="content-wrapper">
+      <router-outlet></router-outlet>
+    </div>
+  </main>
+</div>

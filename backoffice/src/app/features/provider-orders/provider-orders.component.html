@@ -1,0 +1,483 @@
+<div class="orders-container">
+  <div class="page-header">
+    <h2>Orden de Compra</h2>
+    <p class="subtitle">Crea una nueva orden de compra para tus clientes</p>
+  </div>
+
+  <!-- Wizard Steps Indicator -->
+  <div class="steps-indicator" *ngIf="!submitSuccess">
+    <div class="step" [class.active]="currentStep === 'products'" [class.completed]="currentStep === 'order-info' || currentStep === 'confirmation'">
+      <div class="step-number">1</div>
+      <span>Productos</span>
+    </div>
+    <div class="step-line" [class.active]="currentStep === 'order-info' || currentStep === 'confirmation'"></div>
+    <div class="step" [class.active]="currentStep === 'order-info'" [class.completed]="currentStep === 'confirmation'">
+      <div class="step-number">2</div>
+      <span>Datos de Orden</span>
+    </div>
+    <div class="step-line" [class.active]="currentStep === 'confirmation'"></div>
+    <div class="step" [class.active]="currentStep === 'confirmation'">
+      <div class="step-number">3</div>
+      <span>Confirmación</span>
+    </div>
+  </div>
+
+  <!-- Error global -->
+  <div *ngIf="error" class="error-message">
+    <span class="material-icons">error</span>
+    {{ error }}
+    <button class="close-error" (click)="error = ''">×</button>
+  </div>
+
+  <!-- ==================== PASO 1: PRODUCTOS ==================== -->
+  <div *ngIf="currentStep === 'products' && !submitSuccess">
+
+    <!-- Filtros -->
+    <div class="card">
+      <div class="card-header">
+        <span class="material-icons">filter_list</span>
+        <h4>Buscar Productos</h4>
+      </div>
+      <div class="filters-grid">
+        <div class="filter-group">
+          <label>Categoría</label>
+          <select [(ngModel)]="selectedCategoryId" (ngModelChange)="onCategoryChange()">
+            <option [ngValue]="null">{{ loadingCategories ? 'Cargando...' : 'Seleccione' }}</option>
+            <option *ngFor="let cat of categories" [ngValue]="cat.categoryId">{{ cat.categoryName }}</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Subcategoría</label>
+          <select [(ngModel)]="selectedSubCategoryId" (ngModelChange)="onSubCategoryChange()" [disabled]="!selectedCategoryId">
+            <option [ngValue]="null">{{ loadingSubcategories ? 'Cargando...' : 'Seleccione' }}</option>
+            <option *ngFor="let sub of subcategories" [ngValue]="sub.id">{{ sub.name }}</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label>Especialidad</label>
+          <select [(ngModel)]="selectedSpecialityId" [disabled]="!selectedSubCategoryId">
+            <option [ngValue]="null">{{ loadingSpecialities ? 'Cargando...' : 'Seleccione' }}</option>
+            <option *ngFor="let sp of specialities" [ngValue]="sp.id">{{ sp.name }}</option>
+          </select>
+        </div>
+        <div class="filter-group filter-actions">
+          <button class="btn btn-primary" (click)="searchProducts()" [disabled]="!canSearchProducts()">
+            <span class="material-icons">search</span> Buscar
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Productos disponibles -->
+    <div class="card" *ngIf="hasSearched && !loadingProducts">
+      <div class="card-header">
+        <span class="material-icons">inventory_2</span>
+        <h4>Productos Disponibles ({{ productTotalCount }})</h4>
+      </div>
+
+      <div *ngIf="products.length === 0" class="empty-state">
+        <span class="material-icons">inventory_2</span>
+        <p>No se encontraron productos</p>
+      </div>
+
+      <div *ngIf="products.length > 0" class="products-grid">
+        <div class="product-card" *ngFor="let p of products" [class.added]="isProductAdded(p.id)">
+          <div class="product-card-img">
+            <img *ngIf="p.productImg && p.productImg.length > 0" [src]="p.productImg[0]" alt="" />
+            <span *ngIf="!p.productImg || p.productImg.length === 0" class="material-icons">image</span>
+          </div>
+          <div class="product-card-info">
+            <h5>{{ p.name }}</h5>
+            <p class="product-meta">{{ p.brand }} · {{ p.sku }}</p>
+            <p class="product-price">S/ {{ p.priceSale | number:'1.2-2' }}</p>
+            <p class="product-stock">Stock: {{ p.stock }}</p>
+          </div>
+          <button class="btn btn-sm"
+                  [class.btn-primary]="!isProductAdded(p.id)"
+                  [class.btn-disabled]="isProductAdded(p.id)"
+                  [disabled]="isProductAdded(p.id)"
+                  (click)="openAddItemModal(p)">
+            <span class="material-icons">{{ isProductAdded(p.id) ? 'check' : 'add_shopping_cart' }}</span>
+            {{ isProductAdded(p.id) ? 'Agregado' : 'Agregar' }}
+          </button>
+        </div>
+      </div>
+
+      <!-- Paginación productos -->
+      <div *ngIf="productTotalPages > 1" class="pagination">
+        <button class="page-btn" (click)="changeProductPage(productPage - 1)" [disabled]="productPage === 1">
+          <span class="material-icons">chevron_left</span>
+        </button>
+        <button *ngFor="let page of getProductPages()" class="page-btn" [class.active]="page === productPage" (click)="changeProductPage(page)">
+          {{ page }}
+        </button>
+        <button class="page-btn" (click)="changeProductPage(productPage + 1)" [disabled]="productPage === productTotalPages">
+          <span class="material-icons">chevron_right</span>
+        </button>
+        <span class="page-info">Pág {{ productPage }}/{{ productTotalPages }}</span>
+      </div>
+    </div>
+
+    <!-- Loading -->
+    <div *ngIf="loadingProducts" class="loading-state">
+      <div class="spinner"></div>
+      <p>Cargando productos...</p>
+    </div>
+
+    <!-- Resumen de items agregados -->
+    <div class="card" *ngIf="orderItems.length > 0">
+      <div class="card-header">
+        <span class="material-icons">shopping_cart</span>
+        <h4>Productos en la Orden ({{ orderItems.length }})</h4>
+        <span class="order-total">Total: S/ {{ getOrderTotal() | number:'1.2-2' }}</span>
+      </div>
+      <div class="items-table-wrapper">
+        <table class="items-table">
+          <thead>
+            <tr>
+              <th>Producto</th>
+              <th>Tipo Pago</th>
+              <th>Cant.</th>
+              <th>Precio Unit.</th>
+              <th>Cuotas</th>
+              <th>Subtotal</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let item of orderItems; let i = index">
+              <td>
+                <div class="item-product">
+                  <strong>{{ item.product.name }}</strong>
+                  <small>{{ item.product.sku }}</small>
+                </div>
+              </td>
+              <td>
+                <span class="payment-badge" [class.direct]="item.paymentType === 'direct'" [class.installments]="item.paymentType === 'installments'">
+                  {{ item.paymentType === 'direct' ? 'Directo' : 'Cuotas' }}
+                </span>
+              </td>
+              <td>{{ item.quantity }}</td>
+              <td>S/ {{ item.priceUnit | number:'1.2-2' }}</td>
+              <td>{{ item.cantCuotas > 0 ? item.cantCuotas + 'x S/' + (item.precioPorCuota | number:'1.2-2') : '—' }}</td>
+              <td><strong>S/ {{ item.subtotal | number:'1.2-2' }}</strong></td>
+              <td>
+                <button class="btn-icon delete" (click)="removeItem(i)" title="Quitar">
+                  <span class="material-icons">close</span>
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Botón siguiente -->
+    <div class="step-actions">
+      <div></div>
+      <button class="btn btn-primary btn-lg" (click)="goToOrderInfo()" [disabled]="orderItems.length === 0">
+        Siguiente: Datos de Orden
+        <span class="material-icons">arrow_forward</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== PASO 2: DATOS DE ORDEN ==================== -->
+  <div *ngIf="currentStep === 'order-info' && !submitSuccess">
+    <div class="card">
+      <div class="card-header">
+        <span class="material-icons">receipt_long</span>
+        <h4>Información de la Orden</h4>
+      </div>
+      <div class="form-body">
+        <div class="form-row">
+          <div class="form-group">
+            <label>ID Cliente *</label>
+            <input type="number" [(ngModel)]="orderForm.clientId" min="1" />
+          </div>
+          <div class="form-group">
+            <label>Estado de Compra *</label>
+            <select [(ngModel)]="orderForm.purchaseState">
+              <option *ngFor="let st of purchaseStates" [value]="st">{{ st }}</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Método de Pago *</label>
+            <select [(ngModel)]="orderForm.paymentMethod">
+              <option *ngFor="let m of paymentMethods" [value]="m">{{ m }}</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Fecha de Entrega</label>
+            <input type="date" [(ngModel)]="orderForm.deliveryDate" />
+          </div>
+        </div>
+        <div class="form-group full-width">
+          <label>Dirección de Envío *</label>
+          <input type="text" [(ngModel)]="orderForm.mailingAddress" placeholder="Dirección completa de envío" />
+        </div>
+        <div class="form-group full-width">
+          <label>Observaciones</label>
+          <textarea [(ngModel)]="orderForm.observations" placeholder="Observaciones adicionales" rows="3"></textarea>
+        </div>
+      </div>
+    </div>
+
+    <!-- Resumen compacto -->
+    <div class="card summary-card">
+      <div class="card-header">
+        <span class="material-icons">summarize</span>
+        <h4>Resumen</h4>
+      </div>
+      <div class="summary-body">
+        <div class="summary-row" *ngFor="let item of orderItems">
+          <span>{{ item.product.name }} × {{ item.quantity }}</span>
+          <span>S/ {{ item.subtotal | number:'1.2-2' }}</span>
+        </div>
+        <div class="summary-total">
+          <strong>Total</strong>
+          <strong>S/ {{ getOrderTotal() | number:'1.2-2' }}</strong>
+        </div>
+      </div>
+    </div>
+
+    <div class="step-actions">
+      <button class="btn btn-secondary" (click)="goBackToProducts()">
+        <span class="material-icons">arrow_back</span> Volver
+      </button>
+      <button class="btn btn-primary btn-lg" (click)="goToConfirmation()">
+        Siguiente: Confirmar
+        <span class="material-icons">arrow_forward</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== PASO 3: CONFIRMACIÓN ==================== -->
+  <div *ngIf="currentStep === 'confirmation' && !submitSuccess">
+    <div class="card">
+      <div class="card-header">
+        <span class="material-icons">fact_check</span>
+        <h4>Confirmar Orden de Compra</h4>
+      </div>
+
+      <div class="confirmation-body">
+        <!-- Datos de la orden -->
+        <div class="confirm-section">
+          <h5>Datos de la Orden</h5>
+          <div class="confirm-grid">
+            <div class="confirm-item">
+              <label>Cliente ID</label>
+              <span>{{ orderForm.clientId }}</span>
+            </div>
+            <div class="confirm-item">
+              <label>Estado</label>
+              <span>{{ orderForm.purchaseState }}</span>
+            </div>
+            <div class="confirm-item">
+              <label>Método de Pago</label>
+              <span>{{ orderForm.paymentMethod }}</span>
+            </div>
+            <div class="confirm-item">
+              <label>Fecha de Entrega</label>
+              <span>{{ orderForm.deliveryDate || 'Sin definir' }}</span>
+            </div>
+            <div class="confirm-item full">
+              <label>Dirección</label>
+              <span>{{ orderForm.mailingAddress }}</span>
+            </div>
+            <div class="confirm-item full" *ngIf="orderForm.observations">
+              <label>Observaciones</label>
+              <span>{{ orderForm.observations }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Detalle de productos -->
+        <div class="confirm-section">
+          <h5>Detalle de Productos ({{ orderItems.length }})</h5>
+          <div class="items-table-wrapper">
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Tipo Pago</th>
+                  <th>Cant.</th>
+                  <th>Precio Unit.</th>
+                  <th>Desc.</th>
+                  <th>Impuesto</th>
+                  <th>Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let item of orderItems">
+                  <td>
+                    <strong>{{ item.product.name }}</strong><br>
+                    <small>{{ item.product.brand }} · {{ item.product.sku }}</small>
+                  </td>
+                  <td>
+                    <span *ngIf="item.paymentType === 'direct'">Directo</span>
+                    <span *ngIf="item.paymentType === 'installments'">{{ item.cantCuotas }} cuotas de S/ {{ item.precioPorCuota | number:'1.2-2' }} ({{ item.interes }}% int.)</span>
+                  </td>
+                  <td>{{ item.quantity }}</td>
+                  <td>S/ {{ item.priceUnit | number:'1.2-2' }}</td>
+                  <td>{{ item.customDiscount }}%</td>
+                  <td>{{ item.taxes }}%</td>
+                  <td><strong>S/ {{ item.subtotal | number:'1.2-2' }}</strong></td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colspan="6" class="total-label">TOTAL</td>
+                  <td><strong>S/ {{ getOrderTotal() | number:'1.2-2' }}</strong></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="submitError" class="error-message">
+      <span class="material-icons">error</span>
+      {{ submitError }}
+      <button class="close-error" (click)="submitError = ''">×</button>
+    </div>
+
+    <div class="step-actions">
+      <button class="btn btn-secondary" (click)="goBackToOrderInfo()" [disabled]="submitting">
+        <span class="material-icons">arrow_back</span> Volver
+      </button>
+      <button class="btn btn-success btn-lg" (click)="submitOrder()" [disabled]="submitting">
+        <span class="material-icons" *ngIf="!submitting">check_circle</span>
+        <div class="spinner-sm" *ngIf="submitting"></div>
+        {{ submitting ? 'Enviando...' : 'Crear Orden de Compra' }}
+      </button>
+    </div>
+  </div>
+
+  <!-- ==================== ÉXITO ==================== -->
+  <div *ngIf="submitSuccess" class="success-state">
+    <span class="material-icons success-icon">task_alt</span>
+    <h3>¡Orden creada exitosamente!</h3>
+    <p>La orden de compra ha sido registrada con {{ orderItems.length }} producto(s) por un total de <strong>S/ {{ getOrderTotal() | number:'1.2-2' }}</strong></p>
+    <button class="btn btn-primary btn-lg" (click)="resetOrder()">
+      <span class="material-icons">add</span> Crear otra Orden
+    </button>
+  </div>
+</div>
+
+<!-- ==================== MODAL AGREGAR ITEM ==================== -->
+<div class="modal-overlay" *ngIf="showItemModal" (click)="closeItemModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Agregar Producto a la Orden</h3>
+      <button class="close-btn" (click)="closeItemModal()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body" *ngIf="selectedProduct">
+      <!-- Info del producto -->
+      <div class="modal-product-info">
+        <div class="modal-product-img">
+          <img *ngIf="selectedProduct.productImg.length" [src]="selectedProduct.productImg[0]" alt="" />
+          <span *ngIf="!selectedProduct.productImg.length" class="material-icons">image</span>
+        </div>
+        <div>
+          <h4>{{ selectedProduct.name }}</h4>
+          <p>{{ selectedProduct.brand }} · SKU: {{ selectedProduct.sku }}</p>
+          <p class="product-base-price">Precio base: <strong>S/ {{ selectedProduct.priceSale | number:'1.2-2' }}</strong></p>
+        </div>
+      </div>
+
+      <!-- Tipo de pago -->
+      <div class="form-section">
+        <h5>Tipo de Pago</h5>
+        <div class="payment-toggle">
+          <button class="toggle-btn" [class.active]="itemForm.paymentType === 'direct'" (click)="itemForm.paymentType = 'direct'; onPaymentTypeChange()">
+            <span class="material-icons">payments</span> Pago Directo
+          </button>
+          <button class="toggle-btn" [class.active]="itemForm.paymentType === 'installments'" (click)="itemForm.paymentType = 'installments'; onPaymentTypeChange()">
+            <span class="material-icons">credit_card</span> En Cuotas
+          </button>
+        </div>
+      </div>
+
+      <!-- Pago Directo -->
+      <div class="form-section" *ngIf="itemForm.paymentType === 'direct'">
+        <h5>Detalle de Pago Directo</h5>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Precio Unitario (S/)</label>
+            <input type="number" [(ngModel)]="itemForm.priceUnit" min="0" step="0.01" (ngModelChange)="recalculate()" />
+          </div>
+          <div class="form-group">
+            <label>Cantidad</label>
+            <input type="number" [(ngModel)]="itemForm.quantity" min="1" (ngModelChange)="recalculate()" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Pago en Cuotas -->
+      <div class="form-section" *ngIf="itemForm.paymentType === 'installments'">
+        <h5>Detalle de Pago en Cuotas</h5>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Cantidad de Cuotas</label>
+            <input type="number" [(ngModel)]="itemForm.cantCuotas" min="1" (ngModelChange)="recalculate()" />
+          </div>
+          <div class="form-group">
+            <label>Precio por Cuota (S/)</label>
+            <input type="number" [(ngModel)]="itemForm.precioPorCuota" min="0" step="0.01" (ngModelChange)="recalculate()" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Interés Mensual Simple (%)</label>
+            <input type="number" [(ngModel)]="itemForm.interes" min="0" step="0.1" (ngModelChange)="recalculate()" />
+          </div>
+          <div class="form-group">
+            <label>Cantidad de Productos</label>
+            <input type="number" [(ngModel)]="itemForm.quantity" min="1" (ngModelChange)="recalculate()" />
+          </div>
+        </div>
+        <div class="calculated-info">
+          <div class="calc-item">
+            <span>Precio Unitario Calculado:</span>
+            <strong>S/ {{ itemForm.priceUnit | number:'1.2-2' }}</strong>
+          </div>
+        </div>
+      </div>
+
+      <!-- Descuento e impuestos -->
+      <div class="form-section">
+        <h5>Descuento e Impuestos</h5>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Descuento (%)</label>
+            <input type="number" [(ngModel)]="itemForm.customDiscount" min="0" max="100" (ngModelChange)="recalculate()" />
+          </div>
+          <div class="form-group">
+            <label>Impuestos / IVA (%)</label>
+            <input type="number" [(ngModel)]="itemForm.taxes" min="0" step="0.1" (ngModelChange)="recalculate()" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Subtotal -->
+      <div class="modal-subtotal">
+        <span>Subtotal:</span>
+        <strong>S/ {{ itemForm.subtotal | number:'1.2-2' }}</strong>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="closeItemModal()">Cancelar</button>
+      <button class="btn btn-primary" (click)="addItemToOrder()" [disabled]="!itemForm.quantity || !itemForm.priceUnit">
+        <span class="material-icons">add_shopping_cart</span> Agregar a la Orden
+      </button>
+    </div>
+  </div>
+</div>

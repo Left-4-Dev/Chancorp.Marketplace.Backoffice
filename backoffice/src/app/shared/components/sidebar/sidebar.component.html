@@ -1,0 +1,65 @@
+<aside class="sidebar" [class.collapsed]="isCollapsed">
+  <div class="sidebar-header">
+    <div class="logo" *ngIf="!isCollapsed">
+      <img src="LOGO-PRUEBA.png" alt="Logo" class="logo-img">
+    </div>
+    <button class="toggle-btn" (click)="toggleSidebar()">
+      <span class="material-icons">{{ isCollapsed ? 'chevron_right' : 'chevron_left' }}</span>
+    </button>
+  </div>
+
+  <nav class="sidebar-nav">
+    <ul class="nav-list">
+      <ng-container *ngFor="let item of menuItems">
+        <!-- Menú simple (sin hijos) -->
+        <li *ngIf="!item.children"
+            class="nav-item" 
+            [class.active]="isActive(item.route)"
+            (click)="navigateTo(item.route)">
+          <span class="material-icons nav-icon">{{ item.icon }}</span>
+          <span class="nav-label" *ngIf="!isCollapsed">{{ item.label }}</span>
+        </li>
+
+        <!-- Menú con submenú -->
+        <li *ngIf="item.children"
+            class="nav-item-group"
+            [class.expanded]="isMenuExpanded(item.label)"
+            [class.group-active]="isGroupActive(item)">
+          <div class="nav-item group-header"
+               (click)="toggleMenu(item.label)">
+            <span class="material-icons nav-icon">{{ item.icon }}</span>
+            <span class="nav-label" *ngIf="!isCollapsed">{{ item.label }}</span>
+            <span class="material-icons expand-icon" *ngIf="!isCollapsed">
+              {{ isMenuExpanded(item.label) ? 'expand_less' : 'expand_more' }}
+            </span>
+          </div>
+          <ul class="sub-nav-list" *ngIf="isMenuExpanded(item.label) && !isCollapsed">
+            <li *ngFor="let child of item.children"
+                class="nav-item sub-item"
+                [class.active]="isActive(child.route)"
+                (click)="navigateTo(child.route)">
+              <span class="material-icons nav-icon">{{ child.icon }}</span>
+              <span class="nav-label">{{ child.label }}</span>
+            </li>
+          </ul>
+        </li>
+      </ng-container>
+    </ul>
+  </nav>
+
+  <div class="sidebar-footer" *ngIf="!isCollapsed">
+    <div class="user-info-section">
+      <div class="user-avatar">
+        <span class="material-icons">{{ currentRole === 'admin' ? 'admin_panel_settings' : 'store' }}</span>
+      </div>
+      <div class="user-details">
+        <span class="user-name">{{ displayName }}</span>
+        <span class="user-role">{{ roleName }}</span>
+      </div>
+    </div>
+    <button class="logout-btn" (click)="logout()" title="Cerrar sesión">
+      <span class="material-icons">logout</span>
+      <span class="logout-label">Cerrar sesión</span>
+    </button>
+  </div>
+</aside>

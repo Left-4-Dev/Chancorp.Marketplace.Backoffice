@@ -1,0 +1,38 @@
+<div class="login-page">
+  <div class="login-container">
+    <div class="login-branding">
+      <img src="LOGO-PRUEBA.png" alt="AXIS Industries" class="login-logo">
+      <h1 class="login-title">Backoffice</h1>
+      <p class="login-subtitle">Panel de Administración y Proveedores</p>
+    </div>
+
+    <!-- Loading Clerk -->
+    <div class="login-loading" *ngIf="loading">
+      <div class="spinner"></div>
+      <span>Cargando...</span>
+    </div>
+
+    <!-- Syncing con backend -->
+    <div class="login-loading" *ngIf="syncing && !loading">
+      <div class="spinner"></div>
+      <span>Iniciando sesión...</span>
+    </div>
+
+    <!-- Error -->
+    <div class="login-error" *ngIf="error">
+      <span class="material-icons">error_outline</span>
+      <p>{{ error }}</p>
+    </div>
+
+    <!-- Clerk Sign-In Widget -->
+    <div
+      #signInContainer
+      class="clerk-signin-wrapper"
+      [class.hidden]="loading || syncing">
+    </div>
+
+    <div class="login-footer" *ngIf="!loading && !syncing">
+      <p>Solo personal autorizado (Administradores y Proveedores)</p>
+    </div>
+  </div>
+</div>

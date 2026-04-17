@@ -1,0 +1,451 @@
+<div class="products-container">
+  <div class="page-header">
+    <h2>Mis Productos</h2>
+    <p class="subtitle">Gestiona tus productos</p>
+  </div>
+
+  <!-- Filtros (sin proveedor, ya está fijo por sesión) -->
+  <div class="filters-section">
+    <div class="filters-grid">
+      <!-- Categoría -->
+      <div class="filter-group">
+        <label>Categoría</label>
+        <select [(ngModel)]="selectedCategoryId" (ngModelChange)="onCategoryChange()">
+          <option [ngValue]="null">
+            {{ loadingCategories ? 'Cargando...' : 'Seleccione categoría' }}
+          </option>
+          <option *ngFor="let cat of categories" [ngValue]="cat.categoryId">
+            {{ cat.categoryName }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Subcategoría -->
+      <div class="filter-group">
+        <label>Subcategoría</label>
+        <select [(ngModel)]="selectedSubCategoryId" (ngModelChange)="onSubCategoryChange()"
+                [disabled]="!selectedCategoryId">
+          <option [ngValue]="null">
+            {{ loadingSubcategories ? 'Cargando...' : 'Seleccione subcategoría' }}
+          </option>
+          <option *ngFor="let sub of subcategories" [ngValue]="sub.id">
+            {{ sub.name }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Especialidad -->
+      <div class="filter-group">
+        <label>Especialidad</label>
+        <select [(ngModel)]="selectedSpecialityId"
+                [disabled]="!selectedSubCategoryId">
+          <option [ngValue]="null">
+            {{ loadingSpecialities ? 'Cargando...' : 'Seleccione especialidad' }}
+          </option>
+          <option *ngFor="let sp of specialities" [ngValue]="sp.id">
+            {{ sp.name }}
+          </option>
+        </select>
+      </div>
+
+      <!-- Buscar -->
+      <div class="filter-group filter-actions">
+        <button class="btn btn-primary" (click)="searchProducts()" [disabled]="!canSearch()">
+          <span class="material-icons">search</span>
+          Buscar
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Error -->
+  <div *ngIf="error" class="error-message">
+    <span class="material-icons">error</span>
+    {{ error }}
+    <button class="close-error" (click)="error = ''">×</button>
+  </div>
+
+  <!-- Estado inicial -->
+  <div *ngIf="!hasSearched && !loading" class="initial-state">
+    <span class="material-icons">inventory_2</span>
+    <p>Elija una categoría, subcategoría y especialidad para ver sus productos</p>
+  </div>
+
+  <!-- Loading -->
+  <div *ngIf="loading" class="loading-state">
+    <div class="spinner"></div>
+    <p>Cargando productos...</p>
+  </div>
+
+  <!-- Tabla de productos -->
+  <div *ngIf="hasSearched && !loading" class="table-section">
+    <div class="table-header">
+      <h3>Productos ({{ totalCount }})</h3>
+      <button class="btn btn-primary" (click)="openCreateModal()">
+        <span class="material-icons">add</span>
+        Nuevo Producto
+      </button>
+    </div>
+
+    <div *ngIf="products.length === 0" class="empty-state">
+      <span class="material-icons">inventory_2</span>
+      <p>No se encontraron productos</p>
+    </div>
+
+    <div *ngIf="products.length > 0" class="table-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Imagen</th>
+            <th>Nombre</th>
+            <th>SKU</th>
+            <th>Marca</th>
+            <th>Especialidad</th>
+            <th>Precio Venta</th>
+            <th>Stock</th>
+            <th>Descuento</th>
+            <th>Estado</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let product of products">
+            <td>
+              <div class="product-img">
+                <img *ngIf="product.productImg && product.productImg.length > 0"
+                     [src]="product.productImg[0]" alt="Producto" />
+                <span *ngIf="!product.productImg || product.productImg.length === 0"
+                      class="material-icons no-img">image</span>
+              </div>
+            </td>
+            <td>
+              <div class="product-name">{{ product.name }}</div>
+            </td>
+            <td>{{ product.sku }}</td>
+            <td>{{ product.brand }}</td>
+            <td>{{ getSpecialityName(product.specialityId) }}</td>
+            <td>S/ {{ product.priceSale | number:'1.2-2' }}</td>
+            <td>
+              <span class="stock-badge" [class.low-stock]="product.stock < 10">
+                {{ product.stock }}
+              </span>
+            </td>
+            <td>{{ product.discount }}%</td>
+            <td>
+              <span class="state-badge" [class.active]="product.state" [class.inactive]="!product.state">
+                {{ product.state ? 'Activo' : 'Inactivo' }}
+              </span>
+            </td>
+            <td>
+              <div class="actions">
+                <button class="btn-icon edit" title="Editar" (click)="openEditModal(product)">
+                  <span class="material-icons">edit</span>
+                </button>
+                <button class="btn-icon delete" title="Eliminar" (click)="confirmDelete(product)">
+                  <span class="material-icons">delete</span>
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Paginación -->
+    <div *ngIf="totalPages > 1" class="pagination">
+      <button class="page-btn" (click)="changePage(currentPage - 1)" [disabled]="currentPage === 1">
+        <span class="material-icons">chevron_left</span>
+      </button>
+      <button *ngFor="let page of getPages()" class="page-btn" [class.active]="page === currentPage" (click)="changePage(page)">
+        {{ page }}
+      </button>
+      <button class="page-btn" (click)="changePage(currentPage + 1)" [disabled]="currentPage === totalPages">
+        <span class="material-icons">chevron_right</span>
+      </button>
+      <span class="page-info">Página {{ currentPage }} de {{ totalPages }}</span>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Crear/Editar -->
+<div class="modal-overlay" *ngIf="showModal" (click)="closeModal()">
+  <div class="modal-content" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>{{ modalMode === 'create' ? 'Nuevo Producto' : 'Editar Producto' }}</h3>
+      <button class="close-btn" (click)="closeModal()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+
+    <div class="modal-body">
+      <!-- Clasificación -->
+      <div class="form-section">
+        <h4>Clasificación</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Categoría *</label>
+            <select [(ngModel)]="formData.categoryId" (ngModelChange)="onModalCategoryChange()">
+              <option [ngValue]="null">{{ loadingModalCategories ? 'Cargando...' : 'Seleccione' }}</option>
+              <option *ngFor="let cat of modalCategories" [ngValue]="cat.categoryId">
+                {{ cat.categoryName }}
+              </option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Subcategoría *</label>
+            <select [(ngModel)]="formData.subCategoryId" (ngModelChange)="onModalSubCategoryChange()"
+                    [disabled]="!formData.categoryId">
+              <option [ngValue]="null">{{ loadingModalSubcategories ? 'Cargando...' : 'Seleccione' }}</option>
+              <option *ngFor="let sub of modalSubcategories" [ngValue]="sub.id">
+                {{ sub.name }}
+              </option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label>Especialidad *</label>
+            <select [(ngModel)]="formData.specialityId"
+                    [disabled]="!formData.subCategoryId">
+              <option [ngValue]="null">{{ loadingModalSpecialities ? 'Cargando...' : 'Seleccione' }}</option>
+              <option *ngFor="let sp of modalSpecialities" [ngValue]="sp.id">
+                {{ sp.name }}
+              </option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Información básica -->
+      <div class="form-section">
+        <h4>Información Básica</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Nombre *</label>
+            <input type="text" [(ngModel)]="formData.name" placeholder="Nombre del producto" />
+          </div>
+          <div class="form-group">
+            <label>SKU</label>
+            <input type="text" [(ngModel)]="formData.sku" placeholder="SKU" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Marca</label>
+            <input type="text" [(ngModel)]="formData.brand" placeholder="Marca" />
+          </div>
+          <div class="form-group">
+            <label>País de Origen</label>
+            <input type="text" [(ngModel)]="formData.countryOrigin" placeholder="País" />
+          </div>
+        </div>
+        <div class="form-group full-width">
+          <label>Descripción</label>
+          <textarea [(ngModel)]="formData.description" placeholder="Descripción del producto" rows="3"></textarea>
+        </div>
+      </div>
+
+      <!-- Precios y Stock -->
+      <div class="form-section">
+        <h4>Precios y Stock</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Precio Proveedor</label>
+            <input type="number" [(ngModel)]="formData.priceProvider" min="0" step="0.01" />
+          </div>
+          <div class="form-group">
+            <label>Precio Venta *</label>
+            <input type="number" [(ngModel)]="formData.priceSale" min="0" step="0.01" />
+          </div>
+          <div class="form-group">
+            <label>Stock</label>
+            <input type="number" [(ngModel)]="formData.stock" min="0" />
+          </div>
+          <div class="form-group">
+            <label>Descuento (%)</label>
+            <input type="number" [(ngModel)]="formData.discount" min="0" max="100" />
+          </div>
+        </div>
+      </div>
+
+      <!-- Multimedia -->
+      <div class="form-section">
+        <h4>Multimedia</h4>
+
+        <!-- Error de archivos -->
+        <div *ngIf="fileError" class="file-error">
+          <span class="material-icons">warning</span>
+          {{ fileError }}
+          <button class="close-file-error" (click)="fileError = ''">×</button>
+        </div>
+
+        <!-- Imágenes del producto -->
+        <div class="form-group full-width">
+          <label>Imágenes del Producto (máx. {{ limits.IMAGE_MAX_COUNT }}, 5 MB c/u)</label>
+
+          <!-- Imágenes existentes (solo en edición) -->
+          <div *ngIf="existingImageUrls.length > 0" class="existing-files">
+            <span class="existing-label">Imágenes actuales:</span>
+            <div class="image-preview-grid">
+              <div *ngFor="let url of existingImageUrls; let i = index" class="image-preview-item existing">
+                <img [src]="url" alt="Imagen existente" />
+                <button class="remove-file-btn" (click)="removeExistingImage(i)" title="Quitar">
+                  <span class="material-icons">close</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Drop zone para nuevas imágenes -->
+          <div class="drop-zone"
+               [class.drag-over]="dragOverImages"
+               (dragover)="onDragOver($event); dragOverImages = true"
+               (dragleave)="dragOverImages = false"
+               (drop)="onImagesDrop($event)">
+            <span class="material-icons drop-icon">add_photo_alternate</span>
+            <p>Arrastra imágenes aquí o <label class="file-link">selecciona archivos
+              <input type="file" [accept]="limits.IMAGE_ACCEPTED" multiple
+                     (change)="onImagesSelected($event)" hidden />
+            </label></p>
+            <span class="drop-hint">JPG, PNG, WebP — máx. 5 MB cada una</span>
+          </div>
+
+          <!-- Previews de nuevas imágenes -->
+          <div *ngIf="imageFiles.length > 0" class="image-preview-grid">
+            <div *ngFor="let url of imagePreviewUrls; let i = index" class="image-preview-item">
+              <img [src]="url" alt="Preview" />
+              <div class="image-info">{{ imageFiles[i].name }} ({{ formatFileSize(imageFiles[i].size) }})</div>
+              <button class="remove-file-btn" (click)="removeImage(i)" title="Quitar">
+                <span class="material-icons">close</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Catálogo PDF -->
+        <div class="form-group full-width">
+          <label>Catálogo PDF (máx. 10 MB)</label>
+
+          <div *ngIf="existingCatalogUrl" class="existing-file-row">
+            <span class="material-icons">picture_as_pdf</span>
+            <a [href]="existingCatalogUrl" target="_blank" class="existing-link">Catálogo actual</a>
+            <button class="remove-file-btn inline" (click)="removeExistingCatalog()" title="Quitar">
+              <span class="material-icons">close</span>
+            </button>
+          </div>
+
+          <div *ngIf="!catalogFile && !existingCatalogUrl"
+               class="drop-zone small"
+               [class.drag-over]="dragOverCatalog"
+               (dragover)="onDragOver($event); dragOverCatalog = true"
+               (dragleave)="dragOverCatalog = false"
+               (drop)="onCatalogDrop($event)">
+            <span class="material-icons drop-icon">upload_file</span>
+            <p>Arrastra un PDF aquí o <label class="file-link">selecciona archivo
+              <input type="file" [accept]="limits.CATALOG_ACCEPTED"
+                     (change)="onCatalogSelected($event)" hidden />
+            </label></p>
+          </div>
+
+          <div *ngIf="catalogFile" class="selected-file-row">
+            <span class="material-icons">picture_as_pdf</span>
+            <span>{{ catalogFileName }} ({{ formatFileSize(catalogFile.size) }})</span>
+            <button class="remove-file-btn inline" (click)="removeCatalog()" title="Quitar">
+              <span class="material-icons">close</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Video -->
+        <div class="form-group full-width">
+          <label>Video del Producto (máx. 50 MB, {{ limits.VIDEO_MAX_DURATION }}s)</label>
+
+          <div *ngIf="existingVideoUrl" class="existing-file-row">
+            <span class="material-icons">videocam</span>
+            <a [href]="existingVideoUrl" target="_blank" class="existing-link">Video actual</a>
+            <button class="remove-file-btn inline" (click)="removeExistingVideo()" title="Quitar">
+              <span class="material-icons">close</span>
+            </button>
+          </div>
+
+          <div *ngIf="!videoFile && !existingVideoUrl"
+               class="drop-zone small"
+               [class.drag-over]="dragOverVideo"
+               (dragover)="onDragOver($event); dragOverVideo = true"
+               (dragleave)="dragOverVideo = false"
+               (drop)="onVideoDrop($event)">
+            <span class="material-icons drop-icon">video_call</span>
+            <p>Arrastra un video aquí o <label class="file-link">selecciona archivo
+              <input type="file" [accept]="limits.VIDEO_ACCEPTED"
+                     (change)="onVideoSelected($event)" hidden />
+            </label></p>
+            <span class="drop-hint">MP4, WebM — máx. 50 MB, 60 seg</span>
+          </div>
+
+          <div *ngIf="videoFile" class="selected-file-row">
+            <span class="material-icons">videocam</span>
+            <span>{{ videoFileName }} ({{ formatFileSize(videoFile.size) }})</span>
+            <button class="remove-file-btn inline" (click)="removeVideo()" title="Quitar">
+              <span class="material-icons">close</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Garantía y opciones -->
+      <div class="form-section">
+        <h4>Garantía y Opciones</h4>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Tiempo de Garantía (meses)</label>
+            <input type="number" [(ngModel)]="formData.warrantyTime" min="0" />
+          </div>
+        </div>
+        <div class="form-row checkboxes">
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="formData.hasWarranty" /> Tiene Garantía
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="formData.isNew" /> Es Nuevo
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="formData.isOfferUnique" /> Oferta Única
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="formData.showPrice" /> Mostrar Precio
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" [(ngModel)]="formData.state" /> Activo
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="closeModal()" [disabled]="saving">Cancelar</button>
+      <button class="btn btn-primary" (click)="saveProduct()"
+              [disabled]="!formData.name || !formData.specialityId || saving">
+        <span *ngIf="saving" class="spinner-small"></span>
+        {{ saving ? 'Guardando...' : (modalMode === 'create' ? 'Crear' : 'Guardar') }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Eliminar -->
+<div class="modal-overlay" *ngIf="showDeleteConfirm" (click)="cancelDelete()">
+  <div class="modal-content modal-sm" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Confirmar Eliminación</h3>
+      <button class="close-btn" (click)="cancelDelete()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p>¿Está seguro de eliminar el producto <strong>{{ productToDelete?.name }}</strong>?</p>
+      <p class="warning-text">Esta acción no se puede deshacer.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" (click)="cancelDelete()">Cancelar</button>
+      <button class="btn btn-danger" (click)="deleteProduct()">Eliminar</button>
+    </div>
+  </div>
+</div>

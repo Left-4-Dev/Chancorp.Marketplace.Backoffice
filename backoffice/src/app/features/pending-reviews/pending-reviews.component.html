@@ -1,0 +1,180 @@
+<div class="page-container">
+  <div class="page-header">
+    <div class="header-info">
+      <h2>Reviews Pendientes de Aprobación</h2>
+      <p>Gestiona las reviews de productos que requieren aprobación</p>
+    </div>
+  </div>
+
+  <div class="error-message" *ngIf="error">
+    <span class="material-icons">error</span>
+    {{ error }}
+    <button class="close-btn" (click)="error = ''">
+      <span class="material-icons">close</span>
+    </button>
+  </div>
+
+  <!-- Filtros -->
+  <div class="filters-card">
+    <div class="filters-header">
+      <span class="material-icons">filter_alt</span>
+      <h4>Filtros de búsqueda</h4>
+      <span class="required-label">* Todos los campos son obligatorios</span>
+    </div>
+    <div class="filters-grid">
+      <div class="filter-group">
+        <label>Proveedor *</label>
+        <select [(ngModel)]="selectedProviderId" [disabled]="loadingProviders">
+          <option [ngValue]="null">{{ loadingProviders ? 'Cargando...' : '-- Seleccione proveedor --' }}</option>
+          <option *ngFor="let provider of providers" [ngValue]="provider.providerId">
+            {{ provider.enterpriseName }}
+          </option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Fecha Inicio *</label>
+        <input type="date" [(ngModel)]="startDate">
+      </div>
+      <div class="filter-group">
+        <label>Fecha Fin *</label>
+        <input type="date" [(ngModel)]="endDate">
+      </div>
+      <div class="filter-action">
+        <button class="btn-search" [disabled]="!canSearch() || loading" (click)="searchReviews()">
+          <span class="material-icons">search</span>
+          Buscar Reviews
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla de resultados -->
+  <div class="table-card" *ngIf="hasSearched">
+    <div class="table-toolbar">
+      <div class="toolbar-info">
+        <span class="result-count" *ngIf="totalCount > 0">
+          {{ totalCount }} review{{ totalCount !== 1 ? 's' : '' }} pendiente{{ totalCount !== 1 ? 's' : '' }}
+        </span>
+        <span class="result-count" *ngIf="totalCount === 0 && !loading">
+          No hay reviews pendientes
+        </span>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn-icon" (click)="loadReviews()" title="Recargar">
+          <span class="material-icons">refresh</span>
+        </button>
+      </div>
+    </div>
+
+    <div class="table-wrapper">
+      <div class="loading-overlay" *ngIf="loading">
+        <div class="spinner"></div>
+        <span>Cargando...</span>
+      </div>
+
+      <table class="data-table" *ngIf="reviews.length > 0">
+        <thead>
+          <tr>
+            <th>Review</th>
+            <th>Calificación</th>
+            <th>Cliente</th>
+            <th>Producto ID</th>
+            <th>Fecha</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let review of reviews" [class.processing]="processingId === review.id">
+            <td class="review-cell">
+              <div class="review-subject">{{ review.subject }}</div>
+              <div class="review-description">{{ review.description }}</div>
+            </td>
+            <td>
+              <div class="review-rating">
+                <span
+                  *ngFor="let star of getRatingStars(review.rating)"
+                  class="material-icons star"
+                  [class.filled]="star <= review.rating"
+                  [class.half]="star > review.rating && star - 0.5 <= review.rating">
+                  {{ star <= review.rating ? 'star' : (star - 0.5 <= review.rating ? 'star_half' : 'star_border') }}
+                </span>
+                <span class="rating-value">{{ review.rating }}</span>
+              </div>
+            </td>
+            <td>
+              <span class="client-badge">Cliente #{{ review.clientId }}</span>
+            </td>
+            <td>
+              <span class="product-id-badge">{{ review.productId }}</span>
+            </td>
+            <td>
+              {{ review.createdAt | date:'dd/MM/yyyy HH:mm' }}
+            </td>
+            <td>
+              <div class="review-actions">
+                <button
+                  class="btn-approve"
+                  (click)="approveReview(review)"
+                  [disabled]="processingId === review.id"
+                  title="Aprobar review">
+                  <span class="material-icons">check_circle</span>
+                  Aprobar
+                </button>
+                <button
+                  class="btn-deny"
+                  (click)="denyReview(review)"
+                  [disabled]="processingId === review.id"
+                  title="Denegar review">
+                  <span class="material-icons">cancel</span>
+                  Denegar
+                </button>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div class="empty-state" *ngIf="reviews.length === 0 && !loading">
+        <span class="material-icons">verified</span>
+        <h4>Sin reviews pendientes</h4>
+        <p>Todas las reviews han sido procesadas</p>
+      </div>
+    </div>
+
+    <div class="pagination" *ngIf="totalPages > 1">
+      <div class="pagination-info">
+        Página {{ currentPage }} de {{ totalPages }}
+      </div>
+      <div class="pagination-controls">
+        <button
+          class="page-btn"
+          [disabled]="currentPage === 1"
+          (click)="changePage(currentPage - 1)">
+          <span class="material-icons">chevron_left</span>
+        </button>
+        <button
+          *ngFor="let page of getPages()"
+          class="page-btn"
+          [class.active]="page === currentPage"
+          (click)="changePage(page)">
+          {{ page }}
+        </button>
+        <button
+          class="page-btn"
+          [disabled]="currentPage === totalPages"
+          (click)="changePage(currentPage + 1)">
+          <span class="material-icons">chevron_right</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Estado inicial antes de buscar -->
+  <div class="initial-state" *ngIf="!hasSearched">
+    <div class="initial-icon">
+      <span class="material-icons">rate_review</span>
+    </div>
+    <h4>Seleccione los filtros para buscar reviews</h4>
+    <p>Elija un proveedor y un rango de fechas, luego presione "Buscar Reviews"</p>
+  </div>
+</div>
