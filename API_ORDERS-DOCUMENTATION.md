@@ -57,11 +57,12 @@ export interface OrderDetailDto {
   id: string;
   orderId: string;
   productId: string;
+  productVariantId: string | null; // ObjectId de la variante (null si es producto simple)
   productName: string;             // Nombre del producto (dato denormalizado)
   productImg: string;              // URL de imagen del producto (dato denormalizado)
   brand: string;                   // Marca del producto (dato denormalizado)
   providerName: string;            // Nombre del proveedor (dato denormalizado)
-  sku: string;                     // SKU del producto (dato denormalizado)
+  sku: string;                     // SKU del producto o variante (dato denormalizado)
   quantity: number;
   cantCuotas: number;
   interes: number;
@@ -82,6 +83,7 @@ export interface OrderDetailDto {
 export interface ReviewDto {
   id: string;
   productId: string;               // ObjectId del producto
+  productVariantId: string | null; // ObjectId de la variante (null si es producto simple)
   clientId: number;
   providerId: number;              // ID del proveedor
   subject: string;
@@ -148,6 +150,12 @@ GET /api/Order?clientId={clientId}
           "id": "64a1f2b3c4d5e6f7a8b9c0d1",
           "orderId": "69657e02a984fae46a339ef6",
           "productId": "60d5ec49f1a2c8b1a4e0c123",
+          "productVariantId": null,
+          "productName": "Laptop HP",
+          "productImg": "https://res.cloudinary.com/.../laptop-hp.jpg",
+          "brand": "HP",
+          "providerName": "INVERSIONES PEPITO",
+          "sku": "HP-LAP-001",
           "quantity": 2,
           "cantCuotas": 3,
           "interes": 5.5,
@@ -426,11 +434,12 @@ Content-Type: application/json
 interface CreateOrderDetailRequest {
   orderId: string;               // ObjectId de la orden padre
   productId: string;             // ObjectId del producto
+  productVariantId: string | null; // ObjectId de la variante (null si es producto simple)
   productName: string;           // Nombre del producto (dato denormalizado)
   productImg: string;            // URL de imagen del producto (dato denormalizado)
   brand: string;                 // Marca del producto (dato denormalizado)
   providerName: string;          // Nombre del proveedor (dato denormalizado)
-  sku: string;                   // SKU del producto (dato denormalizado)
+  sku: string;                   // SKU del producto o variante (dato denormalizado)
   quantity: number;
   cantCuotas: number;
   interes: number;
@@ -443,12 +452,15 @@ interface CreateOrderDetailRequest {
 }
 ```
 
-> **Nota sobre campos denormalizados:** `productName`, `productImg`, `brand`, `providerName` y `sku` se copian del producto al momento de crear el detalle. Esto garantiza que el historial de la orden mantenga los datos del producto tal como estaban al momento de la compra.
+> **Nota sobre campos denormalizados:** `productName`, `productImg`, `brand`, `providerName` y `sku` se copian del producto (o de la variante, si aplica) al momento de crear el detalle. Esto garantiza que el historial de la orden mantenga los datos del producto tal como estaban al momento de la compra.
+
+> **Nota sobre variantes:** Si el producto comprado tiene variantes (`hasVariations = true` en el microservicio de Productos), enviar `productVariantId` con el ObjectId de la variante seleccionada. El `sku` y `priceUnit` deben tomarse de la variante, no del producto padre. Si es un producto simple, enviar `productVariantId` como `null`.
 
 ```json
 {
   "orderId": "69657e02a984fae46a339ef6",
   "productId": "60d5ec49f1a2c8b1a4e0c123",
+  "productVariantId": null,
   "productName": "Laptop HP",
   "productImg": "https://example.com/img/laptop-hp.jpg",
   "brand": "HP",
@@ -576,6 +588,7 @@ GET /api/Review/paginated?providerId={providerId}&startDate={startDate}&endDate=
       {
         "id": "6965ca70a984fae46a339f06",
         "productId": "6965763aa984fae46a339eef",
+        "productVariantId": null,
         "clientId": 1,
         "providerId": 1,
         "subject": "Excelente producto",
@@ -640,6 +653,7 @@ GET /api/Review/product/{productId}
     {
       "id": "6965ca70a984fae46a339f06",
       "productId": "6965763aa984fae46a339eef",
+      "productVariantId": null,
       "clientId": 1,
       "subject": "Excelente producto",
       "description": "La laptop llegó en perfectas condiciones, funciona muy bien.",
@@ -683,6 +697,7 @@ GET /api/Review/pending?providerId={providerId}&startDate={startDate}&endDate={e
       {
         "id": "6965ca70a984fae46a339f06",
         "productId": "6965763aa984fae46a339eef",
+        "productVariantId": null,
         "clientId": 1,
         "providerId": 1,
         "subject": "Excelente producto",
@@ -777,6 +792,7 @@ Content-Type: application/json
 ```typescript
 interface CreateReviewRequest {
   productId: string;             // ObjectId del producto
+  productVariantId: string | null; // ObjectId de la variante (null si es producto simple)
   clientId: number;
   providerId: number;            // ID del proveedor
   subject: string;
@@ -790,6 +806,7 @@ interface CreateReviewRequest {
 ```json
 {
   "productId": "6965763aa984fae46a339eef",
+  "productVariantId": null,
   "clientId": 1,
   "providerId": 1,
   "subject": "Excelente producto",
@@ -905,5 +922,6 @@ DELETE /api/Review/{id}
 5. **Respuesta wrapper**: Siempre verificar `response.success` antes de usar `response.data`.
 6. **OrderDetails embebidos**: Al consultar órdenes (GET, GET paginated), los `orderDetails` vienen embebidos como array dentro de cada orden.
 7. **Campos denormalizados en OrderDetail**: `productName`, `productImg`, `brand`, `providerName` y `sku` se guardan al momento de crear el detalle. Estos datos representan el estado del producto al momento de la compra.
-8. **Reviews**: Las reviews se consultan por `productId` o `clientId`. El campo `approvedState` indica si la review fue aprobada (ej: `"Pending"`, `"Approved"`, `"Rejected"`).
-9. **CORS**: Asegurar que el backend tenga configurado CORS para el dominio del frontend Angular.
+8. **Soporte de variantes de producto**: Los campos `productVariantId` en `OrderDetail` y `Review` permiten referenciar una variante específica de un producto con variantes (`hasVariations = true` en el microservicio de Productos). Para productos simples, este campo es `null`. Cuando el producto tiene variantes, el `sku` y `priceUnit` del detalle deben tomarse de la variante, no del producto padre.
+9. **Reviews**: Las reviews se consultan por `productId` o `clientId`. El campo `approvedState` indica si la review fue aprobada (ej: `"Pending"`, `"Approved"`, `"Rejected"`).
+10. **CORS**: Asegurar que el backend tenga configurado CORS para el dominio del frontend Angular.

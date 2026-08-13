@@ -1,6 +1,6 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { ProductDto, ProviderCategoryDto, SubCategoryDto, SpecialityDto, ProviderDto, FILE_LIMITS } from '../../core/models';
-import { ProductService, ProviderCategoryService, SubCategoryService, SpecialityService, ProviderService } from '../../core/services';
+import { ProductDto, ProductVariantDto, PrimaryAttributeDto, ProviderCategoryDto, SubCategoryDto, SpecialityDto, ProviderDto, FILE_LIMITS } from '../../core/models';
+import { ProductService, ProductVariantService, ProviderCategoryService, SubCategoryService, SpecialityService, ProviderService } from '../../core/services';
 
 @Component({
   selector: 'app-products',
@@ -68,10 +68,36 @@ export class ProductsComponent implements OnInit {
   dragOverCatalog = false;
   dragOverVideo = false;
 
+  // Datasheet (clave-valor) — solo producto simple
+  datasheetEntries: { key: string; value: string }[] = [];
+
+  // Primary Attributes — solo producto con variantes
+  primaryAttributes: PrimaryAttributeDto[] = [];
+
+  // Variants management (edit mode, hasVariations=true)
+  variants: ProductVariantDto[] = [];
+  variantsCurrentPage = 1;
+  variantsTotalPages = 1;
+  variantsTotalCount = 0;
+  loadingVariants = false;
+
+  // Variant CRUD Modal
+  showVariantModal = false;
+  variantModalMode: 'create' | 'edit' = 'create';
+  selectedVariant: ProductVariantDto | null = null;
+  variantFormData: any = {};
+  variantSecondaryEntries: { key: string; value: string }[] = [];
+  savingVariant = false;
+
+  // Delete variant
+  showDeleteVariantConfirm = false;
+  variantToDelete: ProductVariantDto | null = null;
+
   readonly limits = FILE_LIMITS;
 
   constructor(
     private productService: ProductService,
+    private productVariantService: ProductVariantService,
     private providerCategoryService: ProviderCategoryService,
     private subcategoryService: SubCategoryService,
     private specialityService: SpecialityService,
@@ -192,7 +218,6 @@ export class ProductsComponent implements OnInit {
       this.error = 'Debe seleccionar Proveedor y Especialidad';
       return;
     }
-
     this.currentPage = 1;
     this.loadProducts();
   }
@@ -247,6 +272,7 @@ export class ProductsComponent implements OnInit {
       brand: '',
       description: '',
       countryOrigin: '',
+      hasVariations: false,
       priceProvider: 0,
       priceSale: 0,
       stock: 0,
@@ -284,16 +310,17 @@ export class ProductsComponent implements OnInit {
       subCategoryId: subCatId,
       specialityId: product.specialityId,
       name: product.name,
-      sku: product.sku,
+      sku: product.sku || '',
       brand: product.brand,
       description: product.description,
       countryOrigin: product.countryOrigin,
-      priceProvider: product.priceProvider,
-      priceSale: product.priceSale,
-      stock: product.stock,
+      hasVariations: product.hasVariations,
+      priceProvider: product.priceProvider || 0,
+      priceSale: product.priceSale || 0,
+      stock: product.stock || 0,
       warrantyTime: product.warrantyTime,
       hasWarranty: product.hasWarranty,
-      discount: product.discount,
+      discount: product.discount || 0,
       isNew: product.isNew,
       isOfferUnique: product.isOfferUnique,
       showPrice: product.showPrice,
@@ -302,8 +329,25 @@ export class ProductsComponent implements OnInit {
 
     this.resetFiles();
     this.existingImageUrls = product.productImg ? [...product.productImg] : [];
-    this.existingCatalogUrl = product.catalog || '';
+    this.existingCatalogUrl = product.catalogPdf || '';
     this.existingVideoUrl = product.productVideo || '';
+
+    // Load attributes for simple products
+    if (!product.hasVariations && product.attributes && typeof product.attributes === 'object') {
+      this.datasheetEntries = Object.entries(product.attributes).map(([key, value]) => ({
+        key,
+        value: String(value)
+      }));
+    }
+
+    // Load primary attributes for variant products
+    if (product.hasVariations && product.primaryAttributes) {
+      this.primaryAttributes = product.primaryAttributes.map(a => ({
+        name: a.name,
+        options: [...a.options]
+      }));
+      this.loadVariants(1);
+    }
 
     this.loadModalCategories(product.providerId, () => {
       if (catId) {
@@ -336,6 +380,12 @@ export class ProductsComponent implements OnInit {
     this.videoFileName = '';
     this.existingVideoUrl = '';
     this.fileError = '';
+    this.datasheetEntries = [];
+    this.primaryAttributes = [];
+    this.variants = [];
+    this.variantsCurrentPage = 1;
+    this.variantsTotalPages = 1;
+    this.variantsTotalCount = 0;
   }
 
   loadModalCategories(providerId: number, callback?: () => void): void {
@@ -376,7 +426,6 @@ export class ProductsComponent implements OnInit {
     this.modalSpecialities = [];
 
     if (!this.formData.categoryId) return;
-
     this.loadModalSubcategories(this.formData.categoryId);
   }
 
@@ -403,7 +452,6 @@ export class ProductsComponent implements OnInit {
     this.modalSpecialities = [];
 
     if (!this.formData.subCategoryId) return;
-
     this.loadModalSpecialities(this.formData.subCategoryId);
   }
 
@@ -427,96 +475,284 @@ export class ProductsComponent implements OnInit {
   saveProduct(): void {
     this.fileError = '';
 
-    if (this.modalMode === 'create') {
-      const fields: Record<string, any> = {
-        providerId: this.formData.providerId,
-        specialityId: this.formData.specialityId,
-        name: this.formData.name,
-        sku: this.formData.sku,
-        brand: this.formData.brand,
-        description: this.formData.description,
-        countryOrigin: this.formData.countryOrigin,
-        priceProvider: Number(this.formData.priceProvider),
-        priceSale: Number(this.formData.priceSale),
-        stock: Number(this.formData.stock),
-        warrantyTime: Number(this.formData.warrantyTime),
-        hasWarranty: this.formData.hasWarranty,
-        discount: Number(this.formData.discount),
-        isNew: this.formData.isNew,
-        isOfferUnique: this.formData.isOfferUnique,
-        showPrice: this.formData.showPrice,
-        state: this.formData.state
-      };
+    const fields: Record<string, any> = {
+      providerId: this.formData.providerId,
+      specialityId: this.formData.specialityId,
+      name: this.formData.name,
+      brand: this.formData.brand,
+      description: this.formData.description,
+      countryOrigin: this.formData.countryOrigin,
+      hasVariations: this.formData.hasVariations,
+      warrantyTime: Number(this.formData.warrantyTime),
+      hasWarranty: this.formData.hasWarranty,
+      isNew: this.formData.isNew,
+      isOfferUnique: this.formData.isOfferUnique,
+      showPrice: this.formData.showPrice,
+      state: this.formData.state
+    };
 
-      this.saving = true;
-      this.productService.create(
-        fields,
-        this.imageFiles.length > 0 ? this.imageFiles : undefined,
-        this.catalogFile || undefined,
-        this.videoFile || undefined
-      ).subscribe({
+    if (!this.formData.hasVariations) {
+      fields['sku'] = this.formData.sku;
+      fields['priceProvider'] = Number(this.formData.priceProvider);
+      fields['priceSale'] = Number(this.formData.priceSale);
+      fields['stock'] = Number(this.formData.stock);
+      fields['discount'] = Number(this.formData.discount);
+
+      const attrsObj: Record<string, string> = {};
+      for (const entry of this.datasheetEntries) {
+        const key = entry.key.trim();
+        if (key) attrsObj[key] = entry.value;
+      }
+      if (Object.keys(attrsObj).length > 0) {
+        fields['attributesJson'] = JSON.stringify(attrsObj);
+      }
+    } else {
+      if (this.primaryAttributes.length > 0) {
+        fields['primaryAttributesJson'] = JSON.stringify(this.primaryAttributes);
+      }
+    }
+
+    if (this.modalMode === 'edit') {
+      fields['id'] = this.selectedProduct!.id;
+    }
+
+    this.saving = true;
+    const operation = this.modalMode === 'create'
+      ? this.productService.create(
+          fields,
+          this.imageFiles.length > 0 ? this.imageFiles : undefined,
+          this.catalogFile || undefined,
+          this.videoFile || undefined
+        )
+      : this.productService.update(
+          fields,
+          this.imageFiles.length > 0 ? this.imageFiles : undefined,
+          this.catalogFile || undefined,
+          this.videoFile || undefined
+        );
+
+    operation.subscribe({
+      next: (response) => {
+        this.saving = false;
+        if (response.success) {
+          this.closeModal();
+          this.loadProducts();
+        } else {
+          this.error = response.mensaje || 'Error al guardar producto';
+          this.cdr.detectChanges();
+        }
+      },
+      error: () => {
+        this.saving = false;
+        this.error = 'Error de conexión al guardar producto';
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  // ======== Datasheet (clave-valor) — Simple products ========
+
+  addDatasheetEntry(): void {
+    this.datasheetEntries.push({ key: '', value: '' });
+  }
+
+  removeDatasheetEntry(index: number): void {
+    this.datasheetEntries.splice(index, 1);
+  }
+
+  // ======== Primary Attributes — Variant products ========
+
+  addPrimaryAttribute(): void {
+    this.primaryAttributes.push({ name: '', options: [''] });
+  }
+
+  removePrimaryAttribute(index: number): void {
+    this.primaryAttributes.splice(index, 1);
+  }
+
+  addPrimaryAttributeOption(attrIndex: number): void {
+    this.primaryAttributes[attrIndex].options.push('');
+  }
+
+  removePrimaryAttributeOption(attrIndex: number, optIndex: number): void {
+    this.primaryAttributes[attrIndex].options.splice(optIndex, 1);
+  }
+
+  // ======== Variants Management ========
+
+  loadVariants(page: number = 1): void {
+    if (!this.selectedProduct) return;
+    this.loadingVariants = true;
+    this.variantsCurrentPage = page;
+
+    this.productVariantService.getByProductId(this.selectedProduct.id, page, 50).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          this.variants = response.data.items;
+          this.variantsTotalPages = response.data.totalPages;
+          this.variantsTotalCount = response.data.totalCount;
+        }
+        this.loadingVariants = false;
+        this.cdr.detectChanges();
+      },
+      error: () => {
+        this.loadingVariants = false;
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  openVariantModal(mode: 'create' | 'edit', variant?: ProductVariantDto): void {
+    this.variantModalMode = mode;
+    this.selectedVariant = variant || null;
+
+    if (mode === 'create') {
+      const primarySelection: Record<string, string> = {};
+      this.primaryAttributes.forEach(a => primarySelection[a.name] = '');
+      this.variantFormData = {
+        sku: '',
+        priceProvider: 0,
+        priceSale: 0,
+        stock: 0,
+        discount: 0,
+        state: true,
+        primarySelection
+      };
+      this.variantSecondaryEntries = [];
+    } else if (variant) {
+      this.variantFormData = {
+        sku: variant.sku,
+        priceProvider: variant.priceProvider,
+        priceSale: variant.priceSale,
+        stock: variant.stock,
+        discount: variant.discount,
+        state: variant.state,
+        primarySelection: { ...variant.primarySelection }
+      };
+      this.variantSecondaryEntries = Object.entries(variant.secondaryAttributes || {}).map(([key, value]) => ({
+        key,
+        value: String(value)
+      }));
+    }
+
+    this.showVariantModal = true;
+  }
+
+  closeVariantModal(): void {
+    this.showVariantModal = false;
+    this.selectedVariant = null;
+    this.variantFormData = {};
+    this.variantSecondaryEntries = [];
+  }
+
+  addVariantSecondaryEntry(): void {
+    this.variantSecondaryEntries.push({ key: '', value: '' });
+  }
+
+  removeVariantSecondaryEntry(index: number): void {
+    this.variantSecondaryEntries.splice(index, 1);
+  }
+
+  saveVariant(): void {
+    const secondaryAttributes: Record<string, string> = {};
+    for (const entry of this.variantSecondaryEntries) {
+      const key = entry.key.trim();
+      if (key) secondaryAttributes[key] = entry.value;
+    }
+
+    this.savingVariant = true;
+
+    if (this.variantModalMode === 'create') {
+      this.productVariantService.create({
+        productId: this.selectedProduct!.id,
+        sku: this.variantFormData.sku,
+        primarySelection: this.variantFormData.primarySelection,
+        secondaryAttributes,
+        priceProvider: Number(this.variantFormData.priceProvider),
+        priceSale: Number(this.variantFormData.priceSale),
+        stock: Number(this.variantFormData.stock),
+        discount: Number(this.variantFormData.discount),
+        state: this.variantFormData.state
+      }).subscribe({
         next: (response) => {
-          this.saving = false;
+          this.savingVariant = false;
           if (response.success) {
-            this.closeModal();
-            this.loadProducts();
+            this.closeVariantModal();
+            this.loadVariants(this.variantsCurrentPage);
           } else {
-            this.error = response.mensaje || 'Error al crear producto';
+            this.error = response.mensaje || 'Error al crear variante';
             this.cdr.detectChanges();
           }
         },
         error: () => {
-          this.saving = false;
-          this.error = 'Error de conexión al crear producto';
+          this.savingVariant = false;
+          this.error = 'Error de conexión al crear variante';
           this.cdr.detectChanges();
         }
       });
     } else {
-      const fields: Record<string, any> = {
-        id: this.selectedProduct!.id,
-        providerId: this.formData.providerId,
-        specialityId: this.formData.specialityId,
-        name: this.formData.name,
-        sku: this.formData.sku,
-        brand: this.formData.brand,
-        description: this.formData.description,
-        countryOrigin: this.formData.countryOrigin,
-        priceProvider: Number(this.formData.priceProvider),
-        priceSale: Number(this.formData.priceSale),
-        stock: Number(this.formData.stock),
-        warrantyTime: Number(this.formData.warrantyTime),
-        hasWarranty: this.formData.hasWarranty,
-        discount: Number(this.formData.discount),
-        isNew: this.formData.isNew,
-        isOfferUnique: this.formData.isOfferUnique,
-        showPrice: this.formData.showPrice,
-        state: this.formData.state
-      };
-
-      this.saving = true;
-      this.productService.update(
-        fields,
-        this.imageFiles.length > 0 ? this.imageFiles : undefined,
-        this.catalogFile || undefined,
-        this.videoFile || undefined
-      ).subscribe({
+      this.productVariantService.update({
+        id: this.selectedVariant!.id,
+        sku: this.variantFormData.sku,
+        primarySelection: this.variantFormData.primarySelection,
+        secondaryAttributes,
+        priceProvider: Number(this.variantFormData.priceProvider),
+        priceSale: Number(this.variantFormData.priceSale),
+        stock: Number(this.variantFormData.stock),
+        discount: Number(this.variantFormData.discount),
+        state: this.variantFormData.state
+      }).subscribe({
         next: (response) => {
-          this.saving = false;
+          this.savingVariant = false;
           if (response.success) {
-            this.closeModal();
-            this.loadProducts();
+            this.closeVariantModal();
+            this.loadVariants(this.variantsCurrentPage);
           } else {
-            this.error = response.mensaje || 'Error al actualizar producto';
+            this.error = response.mensaje || 'Error al actualizar variante';
             this.cdr.detectChanges();
           }
         },
         error: () => {
-          this.saving = false;
-          this.error = 'Error de conexión al actualizar producto';
+          this.savingVariant = false;
+          this.error = 'Error de conexión al actualizar variante';
           this.cdr.detectChanges();
         }
       });
     }
+  }
+
+  confirmDeleteVariant(variant: ProductVariantDto): void {
+    this.variantToDelete = variant;
+    this.showDeleteVariantConfirm = true;
+  }
+
+  cancelDeleteVariant(): void {
+    this.showDeleteVariantConfirm = false;
+    this.variantToDelete = null;
+  }
+
+  deleteVariant(): void {
+    if (!this.variantToDelete) return;
+
+    this.productVariantService.delete(this.variantToDelete.id).subscribe({
+      next: (response) => {
+        if (response.success) {
+          this.cancelDeleteVariant();
+          this.loadVariants(this.variantsCurrentPage);
+        } else {
+          this.error = response.mensaje || 'Error al eliminar variante';
+          this.cdr.detectChanges();
+        }
+      },
+      error: () => {
+        this.error = 'Error de conexión al eliminar variante';
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  getObjectKeys(obj: Record<string, any>): string[] {
+    return Object.keys(obj || {});
   }
 
   // ======== File Handling ========
@@ -595,7 +831,7 @@ export class ProductsComponent implements OnInit {
       return;
     }
     if (file.size > FILE_LIMITS.CATALOG_MAX_SIZE) {
-      this.fileError = `El catálogo excede el límite de 10 MB`;
+      this.fileError = 'El catálogo excede el límite de 10 MB';
       return;
     }
     this.catalogFile = file;
@@ -638,7 +874,7 @@ export class ProductsComponent implements OnInit {
       return;
     }
     if (file.size > FILE_LIMITS.VIDEO_MAX_SIZE) {
-      this.fileError = `El video excede el límite de 50 MB`;
+      this.fileError = 'El video excede el límite de 50 MB';
       return;
     }
 

@@ -18,6 +18,7 @@ export interface OrderDetailDto {
   id: string;
   orderId: string;
   productId: string;
+  productVariantId: string | null;
   productName: string;
   productImg: string;
   brand: string;
@@ -58,6 +59,7 @@ export interface CreateOrderRequest {
 export interface CreateOrderDetailRequest {
   orderId: string;
   productId: string;
+  productVariantId: string | null;
   quantity: number;
   cantCuotas: number;
   interes: number;

@@ -1,16 +1,18 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
 import {
-  ProductDto, ProviderCategoryDto, SubCategoryDto, SpecialityDto,
+  ProductDto, ProductVariantDto, PrimaryAttributeDto, ProviderCategoryDto, SubCategoryDto, SpecialityDto,
   CreateOrderRequest, CreateOrderDetailRequest
 } from '../../core/models';
 import {
-  ProductService, ProviderCategoryService, SubCategoryService,
+  ProductService, ProductVariantService, ProviderCategoryService, SubCategoryService,
   SpecialityService, OrderService, RoleService
 } from '../../core/services';
 import { ProductPaginatedResult } from '../../core/services/product.service';
 
 export interface OrderItem {
   product: ProductDto;
+  productVariantId: string | null;
+  variantSku: string;
   paymentType: 'direct' | 'installments';
   quantity: number;
   priceUnit: number;
@@ -62,6 +64,13 @@ export class ProviderOrdersComponent implements OnInit {
   selectedProduct: ProductDto | null = null;
   itemForm: Partial<OrderItem> = {};
 
+  // Variant selection (for products with variations)
+  showVariantSelector = false;
+  productVariants: ProductVariantDto[] = [];
+  loadingVariants = false;
+  selectedVariant: ProductVariantDto | null = null;
+  variantFilters: Record<string, string> = {};
+
   // === PASO 2: Datos de la orden ===
   orderForm = {
     clientId: 0,
@@ -84,6 +93,7 @@ export class ProviderOrdersComponent implements OnInit {
 
   constructor(
     private productService: ProductService,
+    private productVariantService: ProductVariantService,
     private providerCategoryService: ProviderCategoryService,
     private subcategoryService: SubCategoryService,
     private specialityService: SpecialityService,
@@ -197,45 +207,99 @@ export class ProviderOrdersComponent implements OnInit {
     return pages;
   }
 
-  isProductAdded(productId: string): boolean {
-    return this.orderItems.some(item => item.product.id === productId);
+  isProductAdded(product: ProductDto): boolean {
+    if (product.hasVariations) return false; // Can add multiple variants
+    return this.orderItems.some(item => item.product.id === product.id);
   }
 
   // ========== Modal item ==========
 
   openAddItemModal(product: ProductDto): void {
     this.selectedProduct = product;
+    this.selectedVariant = null;
+
+    if (product.hasVariations) {
+      // Show variant selector first
+      this.showVariantSelector = true;
+      this.productVariants = [];
+      this.variantFilters = {};
+      this.loadProductVariants();
+      return;
+    }
+
+    this.initItemForm(product.priceSale || 0);
+    this.showItemModal = true;
+  }
+
+  private initItemForm(price: number): void {
     this.itemForm = {
       paymentType: 'direct',
       quantity: 1,
-      priceUnit: product.priceSale,
+      priceUnit: price,
       cantCuotas: 1,
       precioPorCuota: 0,
       interes: 0,
       customDiscount: 0,
       taxes: 0,
-      subtotal: product.priceSale
+      subtotal: price
     };
     this.recalculate();
+  }
+
+  loadProductVariants(): void {
+    if (!this.selectedProduct) return;
+    this.loadingVariants = true;
+    const filters = Object.keys(this.variantFilters).length > 0 ?
+      Object.fromEntries(Object.entries(this.variantFilters).filter(([_, v]) => v)) : undefined;
+
+    this.productVariantService.getByProductId(this.selectedProduct.id, 1, 50, filters).subscribe({
+      next: (res) => {
+        if (res.success && res.data) {
+          this.productVariants = res.data.items;
+        }
+        this.loadingVariants = false;
+        this.cdr.detectChanges();
+      },
+      error: () => { this.loadingVariants = false; this.cdr.detectChanges(); }
+    });
+  }
+
+  onVariantFilterChange(): void {
+    this.loadProductVariants();
+  }
+
+  selectVariant(variant: ProductVariantDto): void {
+    this.selectedVariant = variant;
+    this.showVariantSelector = false;
+    this.initItemForm(variant.priceSale);
     this.showItemModal = true;
+  }
+
+  closeVariantSelector(): void {
+    this.showVariantSelector = false;
+    this.selectedProduct = null;
+    this.productVariants = [];
+    this.selectedVariant = null;
   }
 
   closeItemModal(): void {
     this.showItemModal = false;
     this.selectedProduct = null;
+    this.selectedVariant = null;
     this.itemForm = {};
   }
 
   onPaymentTypeChange(): void {
+    const basePrice = this.selectedVariant?.priceSale ?? this.selectedProduct?.priceSale ?? 0;
     if (this.itemForm.paymentType === 'direct') {
       this.itemForm.cantCuotas = 1;
       this.itemForm.precioPorCuota = 0;
       this.itemForm.interes = 0;
-      this.itemForm.priceUnit = this.selectedProduct?.priceSale || 0;
+      this.itemForm.priceUnit = basePrice;
     } else {
       this.itemForm.cantCuotas = 3;
       this.itemForm.interes = 0;
-      this.itemForm.precioPorCuota = this.selectedProduct?.priceSale || 0;
+      this.itemForm.precioPorCuota = basePrice;
     }
     this.recalculate();
   }
@@ -275,6 +339,8 @@ export class ProviderOrdersComponent implements OnInit {
 
     const item: OrderItem = {
       product: this.selectedProduct,
+      productVariantId: this.selectedVariant ? this.selectedVariant.id : null,
+      variantSku: this.selectedVariant ? this.selectedVariant.sku : '',
       paymentType: this.itemForm.paymentType || 'direct',
       quantity: this.itemForm.quantity || 1,
       priceUnit: this.itemForm.priceUnit || 0,
@@ -374,6 +440,7 @@ export class ProviderOrdersComponent implements OnInit {
     const detail: CreateOrderDetailRequest = {
       orderId,
       productId: item.product.id,
+      productVariantId: item.productVariantId,
       quantity: item.quantity,
       cantCuotas: item.cantCuotas,
       interes: item.interes,
@@ -384,7 +451,7 @@ export class ProviderOrdersComponent implements OnInit {
       subtotal: item.subtotal,
       productName: item.product.name,
       brand: item.product.brand,
-      sku: item.product.sku,
+      sku: item.variantSku || item.product.sku,
       productImg: item.product.productImg?.length ? item.product.productImg[0] : '',
       providerName: this.roleService.session.displayName,
       state: true
@@ -421,5 +488,9 @@ export class ProviderOrdersComponent implements OnInit {
       mailingAddress: '',
       observations: ''
     };
+  }
+
+  getVariantKeys(obj: Record<string, string>): string[] {
+    return Object.keys(obj || {});
   }
 }

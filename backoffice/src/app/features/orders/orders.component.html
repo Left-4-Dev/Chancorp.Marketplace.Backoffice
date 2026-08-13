@@ -168,6 +168,7 @@
                           <td>
                             <div class="product-name">{{ detail.productName || '—' }}</div>
                             <small class="product-id-badge">{{ detail.productId }}</small>
+                            <small class="variant-id-badge" *ngIf="detail.productVariantId">Variante</small>
                           </td>
                           <td>{{ detail.sku || '—' }}</td>
                           <td>{{ detail.brand || '—' }}</td>

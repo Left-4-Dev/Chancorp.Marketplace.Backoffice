@@ -1,109 +1,105 @@
-<div class="products-container">
+<div class="page-container">
   <div class="page-header">
-    <h2>Mis Productos</h2>
-    <p class="subtitle">Gestiona tus productos</p>
+    <div class="header-info">
+      <h2>Mis Productos</h2>
+      <p>Gestiona los productos de tu empresa por categoría, subcategoría y especialidad</p>
+    </div>
+    <button class="btn-primary" (click)="openCreateModal()">
+      <span class="material-icons">add</span>
+      Nuevo Producto
+    </button>
   </div>
 
-  <!-- Filtros (sin proveedor, ya está fijo por sesión) -->
-  <div class="filters-section">
+  <div class="error-message" *ngIf="error">
+    <span class="material-icons">error</span>
+    {{ error }}
+    <button class="close-btn" (click)="error = ''">
+      <span class="material-icons">close</span>
+    </button>
+  </div>
+
+  <!-- Filtros obligatorios -->
+  <div class="filters-card">
+    <div class="filters-header">
+      <span class="material-icons">filter_alt</span>
+      <h4>Filtros de búsqueda</h4>
+      <span class="required-label">* Todos los campos son obligatorios</span>
+    </div>
     <div class="filters-grid">
-      <!-- Categoría -->
       <div class="filter-group">
-        <label>Categoría</label>
-        <select [(ngModel)]="selectedCategoryId" (ngModelChange)="onCategoryChange()">
-          <option [ngValue]="null">
-            {{ loadingCategories ? 'Cargando...' : 'Seleccione categoría' }}
-          </option>
-          <option *ngFor="let cat of categories" [ngValue]="cat.categoryId">
-            {{ cat.categoryName }}
+        <label>Categoría *</label>
+        <select [(ngModel)]="selectedCategoryId" (ngModelChange)="onCategoryChange()" [disabled]="loadingCategories">
+          <option [ngValue]="null">{{ loadingCategories ? 'Cargando...' : '-- Seleccione categoría --' }}</option>
+          <option *ngFor="let category of categories" [ngValue]="category.categoryId">
+            {{ category.categoryName }}
           </option>
         </select>
       </div>
-
-      <!-- Subcategoría -->
       <div class="filter-group">
-        <label>Subcategoría</label>
-        <select [(ngModel)]="selectedSubCategoryId" (ngModelChange)="onSubCategoryChange()"
-                [disabled]="!selectedCategoryId">
+        <label>Subcategoría *</label>
+        <select [(ngModel)]="selectedSubCategoryId" (ngModelChange)="onSubCategoryChange()" [disabled]="!selectedCategoryId || loadingSubcategories">
           <option [ngValue]="null">
-            {{ loadingSubcategories ? 'Cargando...' : 'Seleccione subcategoría' }}
+            {{ loadingSubcategories ? 'Cargando...' : (!selectedCategoryId ? '-- Seleccione categoría primero --' : '-- Seleccione subcategoría --') }}
           </option>
           <option *ngFor="let sub of subcategories" [ngValue]="sub.id">
             {{ sub.name }}
           </option>
         </select>
       </div>
-
-      <!-- Especialidad -->
       <div class="filter-group">
-        <label>Especialidad</label>
-        <select [(ngModel)]="selectedSpecialityId"
-                [disabled]="!selectedSubCategoryId">
+        <label>Especialidad *</label>
+        <select [(ngModel)]="selectedSpecialityId" [disabled]="!selectedSubCategoryId || loadingSpecialities">
           <option [ngValue]="null">
-            {{ loadingSpecialities ? 'Cargando...' : 'Seleccione especialidad' }}
+            {{ loadingSpecialities ? 'Cargando...' : (!selectedSubCategoryId ? '-- Seleccione subcategoría primero --' : '-- Seleccione especialidad --') }}
           </option>
           <option *ngFor="let sp of specialities" [ngValue]="sp.id">
             {{ sp.name }}
           </option>
         </select>
       </div>
-
-      <!-- Buscar -->
-      <div class="filter-group filter-actions">
-        <button class="btn btn-primary" (click)="searchProducts()" [disabled]="!canSearch()">
+      <div class="filter-action">
+        <button class="btn-search" [disabled]="!canSearch() || loading" (click)="searchProducts()">
           <span class="material-icons">search</span>
-          Buscar
+          Buscar Productos
         </button>
       </div>
     </div>
   </div>
 
-  <!-- Error -->
-  <div *ngIf="error" class="error-message">
-    <span class="material-icons">error</span>
-    {{ error }}
-    <button class="close-error" (click)="error = ''">×</button>
-  </div>
-
-  <!-- Estado inicial -->
-  <div *ngIf="!hasSearched && !loading" class="initial-state">
-    <span class="material-icons">inventory_2</span>
-    <p>Elija una categoría, subcategoría y especialidad para ver sus productos</p>
-  </div>
-
-  <!-- Loading -->
-  <div *ngIf="loading" class="loading-state">
-    <div class="spinner"></div>
-    <p>Cargando productos...</p>
-  </div>
-
-  <!-- Tabla de productos -->
-  <div *ngIf="hasSearched && !loading" class="table-section">
-    <div class="table-header">
-      <h3>Productos ({{ totalCount }})</h3>
-      <button class="btn btn-primary" (click)="openCreateModal()">
-        <span class="material-icons">add</span>
-        Nuevo Producto
-      </button>
+  <!-- Tabla de resultados -->
+  <div class="table-card" *ngIf="hasSearched">
+    <div class="table-toolbar">
+      <div class="toolbar-info">
+        <span class="result-count" *ngIf="totalCount > 0">
+          {{ totalCount }} producto{{ totalCount !== 1 ? 's' : '' }} encontrado{{ totalCount !== 1 ? 's' : '' }}
+        </span>
+        <span class="result-count" *ngIf="totalCount === 0 && !loading">
+          Sin resultados
+        </span>
+      </div>
+      <div class="toolbar-actions">
+        <button class="btn-icon" (click)="loadProducts()" title="Recargar">
+          <span class="material-icons">refresh</span>
+        </button>
+      </div>
     </div>
 
-    <div *ngIf="products.length === 0" class="empty-state">
-      <span class="material-icons">inventory_2</span>
-      <p>No se encontraron productos</p>
-    </div>
+    <div class="table-wrapper">
+      <div class="loading-overlay" *ngIf="loading">
+        <div class="spinner"></div>
+        <span>Cargando...</span>
+      </div>
 
-    <div *ngIf="products.length > 0" class="table-wrapper">
-      <table>
+      <table class="data-table">
         <thead>
           <tr>
             <th>Imagen</th>
             <th>Nombre</th>
+            <th>Tipo</th>
             <th>SKU</th>
             <th>Marca</th>
-            <th>Especialidad</th>
             <th>Precio Venta</th>
             <th>Stock</th>
-            <th>Descuento</th>
             <th>Estado</th>
             <th>Acciones</th>
           </tr>
@@ -113,175 +109,410 @@
             <td>
               <div class="product-img">
                 <img *ngIf="product.productImg && product.productImg.length > 0"
-                     [src]="product.productImg[0]" alt="Producto" />
-                <span *ngIf="!product.productImg || product.productImg.length === 0"
-                      class="material-icons no-img">image</span>
+                     [src]="product.productImg[0]"
+                     [alt]="product.name"
+                     onerror="this.style.display='none'">
+                <span class="material-icons" *ngIf="!product.productImg || product.productImg.length === 0">
+                  image
+                </span>
               </div>
             </td>
             <td>
-              <div class="product-name">{{ product.name }}</div>
+              <div class="product-info">
+                <span class="product-name">{{ product.name }}</span>
+                <span class="product-id">{{ product.id }}</span>
+              </div>
             </td>
-            <td>{{ product.sku }}</td>
-            <td>{{ product.brand }}</td>
-            <td>{{ getSpecialityName(product.specialityId) }}</td>
-            <td>S/ {{ product.priceSale | number:'1.2-2' }}</td>
             <td>
-              <span class="stock-badge" [class.low-stock]="product.stock < 10">
-                {{ product.stock }}
+              <span class="type-badge" [class.simple]="!product.hasVariations" [class.variants]="product.hasVariations">
+                {{ product.hasVariations ? 'Con Variantes' : 'Simple' }}
               </span>
             </td>
-            <td>{{ product.discount }}%</td>
             <td>
-              <span class="state-badge" [class.active]="product.state" [class.inactive]="!product.state">
+              <span class="sku-badge" *ngIf="!product.hasVariations">{{ product.sku }}</span>
+              <span class="sku-badge muted" *ngIf="product.hasVariations">—</span>
+            </td>
+            <td>{{ product.brand }}</td>
+            <td>
+              <div class="price-cell" *ngIf="!product.hasVariations">
+                <span class="price">${{ product.priceSale | number:'1.2-2' }}</span>
+                <span class="price-provider">${{ product.priceProvider | number:'1.2-2' }}</span>
+              </div>
+              <span class="muted-text" *ngIf="product.hasVariations">Ver variantes</span>
+            </td>
+            <td>
+              <span class="stock-badge" *ngIf="!product.hasVariations"
+                    [class.low]="product.stock! < 10" [class.out]="product.stock === 0">
+                {{ product.stock }}
+              </span>
+              <span class="muted-text" *ngIf="product.hasVariations">—</span>
+            </td>
+            <td>
+              <span class="status-badge" [class.active]="product.state" [class.inactive]="!product.state">
                 {{ product.state ? 'Activo' : 'Inactivo' }}
               </span>
             </td>
             <td>
-              <div class="actions">
-                <button class="btn-icon edit" title="Editar" (click)="openEditModal(product)">
+              <div class="action-buttons">
+                <button class="btn-action edit" (click)="openEditModal(product)" title="Editar">
                   <span class="material-icons">edit</span>
                 </button>
-                <button class="btn-icon delete" title="Eliminar" (click)="confirmDelete(product)">
+                <button class="btn-action delete" (click)="confirmDelete(product)" title="Eliminar">
                   <span class="material-icons">delete</span>
                 </button>
               </div>
+            </td>
+          </tr>
+          <tr *ngIf="products.length === 0 && !loading">
+            <td colspan="9" class="empty-state">
+              <span class="material-icons">inventory_2</span>
+              <p>No se encontraron productos con los filtros seleccionados</p>
             </td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <!-- Paginación -->
-    <div *ngIf="totalPages > 1" class="pagination">
-      <button class="page-btn" (click)="changePage(currentPage - 1)" [disabled]="currentPage === 1">
-        <span class="material-icons">chevron_left</span>
-      </button>
-      <button *ngFor="let page of getPages()" class="page-btn" [class.active]="page === currentPage" (click)="changePage(page)">
-        {{ page }}
-      </button>
-      <button class="page-btn" (click)="changePage(currentPage + 1)" [disabled]="currentPage === totalPages">
-        <span class="material-icons">chevron_right</span>
-      </button>
-      <span class="page-info">Página {{ currentPage }} de {{ totalPages }}</span>
+    <div class="pagination" *ngIf="totalPages > 1">
+      <div class="pagination-info">
+        Página {{ currentPage }} de {{ totalPages }}
+      </div>
+      <div class="pagination-controls">
+        <button
+          class="page-btn"
+          [disabled]="currentPage === 1"
+          (click)="changePage(currentPage - 1)">
+          <span class="material-icons">chevron_left</span>
+        </button>
+        <button
+          *ngFor="let page of getPages()"
+          class="page-btn"
+          [class.active]="page === currentPage"
+          (click)="changePage(page)">
+          {{ page }}
+        </button>
+        <button
+          class="page-btn"
+          [disabled]="currentPage === totalPages"
+          (click)="changePage(currentPage + 1)">
+          <span class="material-icons">chevron_right</span>
+        </button>
+      </div>
     </div>
+  </div>
+
+  <!-- Estado inicial -->
+  <div class="initial-state" *ngIf="!hasSearched">
+    <span class="material-icons">inventory_2</span>
+    <h3>Seleccione los filtros para buscar productos</h3>
+    <p>Elija un proveedor, categoría, subcategoría y especialidad, luego presione "Buscar Productos"</p>
   </div>
 </div>
 
-<!-- Modal Crear/Editar -->
+<!-- Modal Crear/Editar Producto -->
 <div class="modal-overlay" *ngIf="showModal" (click)="closeModal()">
-  <div class="modal-content" (click)="$event.stopPropagation()">
+  <div class="modal modal-lg" (click)="$event.stopPropagation()">
     <div class="modal-header">
       <h3>{{ modalMode === 'create' ? 'Nuevo Producto' : 'Editar Producto' }}</h3>
       <button class="close-btn" (click)="closeModal()">
         <span class="material-icons">close</span>
       </button>
     </div>
-
     <div class="modal-body">
-      <!-- Clasificación -->
       <div class="form-section">
-        <h4>Clasificación</h4>
-        <div class="form-row">
+        <h4 class="section-title">
+          <span class="material-icons">category</span>
+          Clasificación
+        </h4>
+        <div class="form-grid">
           <div class="form-group">
             <label>Categoría *</label>
-            <select [(ngModel)]="formData.categoryId" (ngModelChange)="onModalCategoryChange()">
-              <option [ngValue]="null">{{ loadingModalCategories ? 'Cargando...' : 'Seleccione' }}</option>
-              <option *ngFor="let cat of modalCategories" [ngValue]="cat.categoryId">
-                {{ cat.categoryName }}
-              </option>
+            <select [(ngModel)]="formData.categoryId" (ngModelChange)="onModalCategoryChange()" [disabled]="loadingModalCategories">
+              <option [ngValue]="null">{{ loadingModalCategories ? 'Cargando...' : '-- Seleccione --' }}</option>
+              <option *ngFor="let c of modalCategories" [ngValue]="c.categoryId">{{ c.categoryName }}</option>
             </select>
           </div>
           <div class="form-group">
             <label>Subcategoría *</label>
-            <select [(ngModel)]="formData.subCategoryId" (ngModelChange)="onModalSubCategoryChange()"
-                    [disabled]="!formData.categoryId">
-              <option [ngValue]="null">{{ loadingModalSubcategories ? 'Cargando...' : 'Seleccione' }}</option>
-              <option *ngFor="let sub of modalSubcategories" [ngValue]="sub.id">
-                {{ sub.name }}
-              </option>
+            <select [(ngModel)]="formData.subCategoryId" (ngModelChange)="onModalSubCategoryChange()" [disabled]="!formData.categoryId || loadingModalSubcategories">
+              <option [ngValue]="null">{{ loadingModalSubcategories ? 'Cargando...' : '-- Seleccione --' }}</option>
+              <option *ngFor="let s of modalSubcategories" [ngValue]="s.id">{{ s.name }}</option>
             </select>
           </div>
           <div class="form-group">
             <label>Especialidad *</label>
-            <select [(ngModel)]="formData.specialityId"
-                    [disabled]="!formData.subCategoryId">
-              <option [ngValue]="null">{{ loadingModalSpecialities ? 'Cargando...' : 'Seleccione' }}</option>
-              <option *ngFor="let sp of modalSpecialities" [ngValue]="sp.id">
-                {{ sp.name }}
-              </option>
+            <select [(ngModel)]="formData.specialityId" [disabled]="!formData.subCategoryId || loadingModalSpecialities">
+              <option [ngValue]="null">{{ loadingModalSpecialities ? 'Cargando...' : '-- Seleccione --' }}</option>
+              <option *ngFor="let sp of modalSpecialities" [ngValue]="sp.id">{{ sp.name }}</option>
             </select>
           </div>
         </div>
       </div>
 
-      <!-- Información básica -->
       <div class="form-section">
-        <h4>Información Básica</h4>
-        <div class="form-row">
-          <div class="form-group">
+        <h4 class="section-title">
+          <span class="material-icons">info</span>
+          Información General
+        </h4>
+        <div class="form-grid">
+          <div class="form-group full-width">
             <label>Nombre *</label>
-            <input type="text" [(ngModel)]="formData.name" placeholder="Nombre del producto" />
+            <input type="text" [(ngModel)]="formData.name" placeholder="Nombre del producto">
           </div>
           <div class="form-group">
-            <label>SKU</label>
-            <input type="text" [(ngModel)]="formData.sku" placeholder="SKU" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="form-group">
-            <label>Marca</label>
-            <input type="text" [(ngModel)]="formData.brand" placeholder="Marca" />
+            <label>Marca *</label>
+            <input type="text" [(ngModel)]="formData.brand" placeholder="Marca del producto">
           </div>
           <div class="form-group">
             <label>País de Origen</label>
-            <input type="text" [(ngModel)]="formData.countryOrigin" placeholder="País" />
+            <input type="text" [(ngModel)]="formData.countryOrigin" placeholder="Ej: Taiwan, China, USA">
           </div>
-        </div>
-        <div class="form-group full-width">
-          <label>Descripción</label>
-          <textarea [(ngModel)]="formData.description" placeholder="Descripción del producto" rows="3"></textarea>
+          <div class="form-group full-width">
+            <label>Descripción</label>
+            <textarea [(ngModel)]="formData.description" placeholder="Descripción del producto" rows="3"></textarea>
+          </div>
         </div>
       </div>
 
-      <!-- Precios y Stock -->
+      <!-- Tipo de producto -->
       <div class="form-section">
-        <h4>Precios y Stock</h4>
-        <div class="form-row">
+        <h4 class="section-title">
+          <span class="material-icons">settings</span>
+          Tipo de Producto
+        </h4>
+        <div class="product-type-selector">
+          <label class="type-option" [class.selected]="!formData.hasVariations">
+            <input type="radio" [value]="false" [(ngModel)]="formData.hasVariations"
+                   [disabled]="modalMode === 'edit'" name="hasVariations">
+            <span class="type-icon material-icons">inventory</span>
+            <span class="type-label">Producto Simple</span>
+            <span class="type-desc">Producto único con precio, stock y atributos propios</span>
+          </label>
+          <label class="type-option" [class.selected]="formData.hasVariations">
+            <input type="radio" [value]="true" [(ngModel)]="formData.hasVariations"
+                   [disabled]="modalMode === 'edit'" name="hasVariations">
+            <span class="type-icon material-icons">view_list</span>
+            <span class="type-label">Producto con Variantes</span>
+            <span class="type-desc">Producto familia con múltiples variantes (cada una con su SKU/precio/stock)</span>
+          </label>
+        </div>
+        <p class="section-hint" *ngIf="modalMode === 'edit'">
+          <span class="material-icons">info</span>
+          El tipo de producto no se puede cambiar después de creado.
+        </p>
+      </div>
+
+      <!-- Precios y Stock (solo producto simple) -->
+      <div class="form-section" *ngIf="!formData.hasVariations">
+        <h4 class="section-title">
+          <span class="material-icons">attach_money</span>
+          Precios y Stock
+        </h4>
+        <div class="form-grid">
           <div class="form-group">
-            <label>Precio Proveedor</label>
-            <input type="number" [(ngModel)]="formData.priceProvider" min="0" step="0.01" />
+            <label>SKU *</label>
+            <input type="text" [(ngModel)]="formData.sku" placeholder="Código SKU">
+          </div>
+          <div class="form-group">
+            <label>Precio Proveedor *</label>
+            <input type="number" [(ngModel)]="formData.priceProvider" placeholder="0.00" min="0" step="0.01">
           </div>
           <div class="form-group">
             <label>Precio Venta *</label>
-            <input type="number" [(ngModel)]="formData.priceSale" min="0" step="0.01" />
+            <input type="number" [(ngModel)]="formData.priceSale" placeholder="0.00" min="0" step="0.01">
           </div>
           <div class="form-group">
-            <label>Stock</label>
-            <input type="number" [(ngModel)]="formData.stock" min="0" />
+            <label>Stock *</label>
+            <input type="number" [(ngModel)]="formData.stock" placeholder="0" min="0">
           </div>
           <div class="form-group">
             <label>Descuento (%)</label>
-            <input type="number" [(ngModel)]="formData.discount" min="0" max="100" />
+            <input type="number" [(ngModel)]="formData.discount" placeholder="0" min="0" max="100" step="0.1">
           </div>
         </div>
       </div>
 
-      <!-- Multimedia -->
+      <!-- Atributos / Especificaciones (solo producto simple) -->
+      <div class="form-section" *ngIf="!formData.hasVariations">
+        <h4 class="section-title">
+          <span class="material-icons">description</span>
+          Atributos / Especificaciones
+        </h4>
+        <p class="section-hint">Agrega las especificaciones técnicas del producto como pares clave-valor.</p>
+
+        <div class="kv-table" *ngIf="datasheetEntries.length > 0">
+          <div class="kv-header">
+            <span class="kv-col-key">Característica</span>
+            <span class="kv-col-value">Valor</span>
+            <span class="kv-col-action"></span>
+          </div>
+          <div class="kv-row" *ngFor="let entry of datasheetEntries; let i = index">
+            <input type="text" class="kv-input" [(ngModel)]="entry.key" placeholder="Ej: Procesador, RAM, Pantalla...">
+            <input type="text" class="kv-input" [(ngModel)]="entry.value" placeholder="Ej: Intel i9, 32GB DDR5">
+            <button class="btn-icon-sm danger" (click)="removeDatasheetEntry(i)" title="Eliminar">
+              <span class="material-icons">close</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="empty-kv" *ngIf="datasheetEntries.length === 0">
+          <span class="material-icons">info_outline</span>
+          <span>No hay especificaciones. Agrega una con el botón de abajo.</span>
+        </div>
+
+        <button class="btn-add-row" (click)="addDatasheetEntry()">
+          <span class="material-icons">add</span>
+          Agregar Especificación
+        </button>
+      </div>
+
+      <!-- Atributos Primarios / Filtros (solo producto con variantes) -->
+      <div class="form-section" *ngIf="formData.hasVariations">
+        <h4 class="section-title">
+          <span class="material-icons">filter_alt</span>
+          Atributos Primarios (Filtros)
+        </h4>
+        <p class="section-hint">Define los filtros que tendrán las variantes. Ej: Material, Diámetro, Conexión. Cada filtro tiene opciones que los clientes usarán para seleccionar una variante.</p>
+
+        <div class="primary-attributes-list" *ngIf="primaryAttributes.length > 0">
+          <div class="primary-attr-card" *ngFor="let attr of primaryAttributes; let i = index">
+            <div class="attr-header">
+              <input type="text" class="attr-name-input" [(ngModel)]="attr.name"
+                     placeholder="Nombre del filtro (ej: Material)">
+              <button class="btn-icon-sm danger" (click)="removePrimaryAttribute(i)" title="Eliminar filtro">
+                <span class="material-icons">delete</span>
+              </button>
+            </div>
+            <div class="attr-options">
+              <div class="option-chips">
+                <span class="option-chip" *ngFor="let opt of attr.options; let oi = index">
+                  <input type="text" class="option-input" [(ngModel)]="attr.options[oi]"
+                         placeholder="Opción">
+                  <button class="chip-remove-sm" (click)="removePrimaryAttributeOption(i, oi)">
+                    <span class="material-icons">close</span>
+                  </button>
+                </span>
+              </div>
+              <button class="btn-add-option" (click)="addPrimaryAttributeOption(i)">
+                <span class="material-icons">add</span> Opción
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="empty-kv" *ngIf="primaryAttributes.length === 0">
+          <span class="material-icons">info_outline</span>
+          <span>No hay filtros definidos. Agrega al menos uno para poder crear variantes.</span>
+        </div>
+
+        <button class="btn-add-row" (click)="addPrimaryAttribute()">
+          <span class="material-icons">add</span>
+          Agregar Filtro
+        </button>
+      </div>
+
+      <!-- Gestión de Variantes (solo en edición, producto con variantes) -->
+      <div class="form-section" *ngIf="formData.hasVariations && modalMode === 'edit'">
+        <h4 class="section-title">
+          <span class="material-icons">view_list</span>
+          Variantes del Producto
+          <span class="variant-count" *ngIf="variants.length > 0">({{ variantsTotalCount }})</span>
+        </h4>
+
+        <div class="variants-toolbar">
+          <button class="btn-primary btn-sm" (click)="openVariantModal('create')">
+            <span class="material-icons">add</span>
+            Nueva Variante
+          </button>
+        </div>
+
+        <div class="variants-table-wrapper" *ngIf="variants.length > 0">
+          <table class="data-table compact">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Combinación</th>
+                <th>Precio Venta</th>
+                <th>Stock</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let variant of variants">
+                <td><span class="sku-badge">{{ variant.sku }}</span></td>
+                <td>
+                  <div class="variant-selection">
+                    <span class="selection-chip" *ngFor="let key of getObjectKeys(variant.primarySelection)">
+                      {{ key }}: {{ variant.primarySelection[key] }}
+                    </span>
+                  </div>
+                </td>
+                <td>${{ variant.priceSale | number:'1.2-2' }}</td>
+                <td>
+                  <span class="stock-badge" [class.low]="variant.stock < 10" [class.out]="variant.stock === 0">
+                    {{ variant.stock }}
+                  </span>
+                </td>
+                <td>
+                  <span class="status-badge" [class.active]="variant.state" [class.inactive]="!variant.state">
+                    {{ variant.state ? 'Activo' : 'Inactivo' }}
+                  </span>
+                </td>
+                <td>
+                  <div class="action-buttons">
+                    <button class="btn-action edit" (click)="openVariantModal('edit', variant)" title="Editar">
+                      <span class="material-icons">edit</span>
+                    </button>
+                    <button class="btn-action delete" (click)="confirmDeleteVariant(variant)" title="Eliminar">
+                      <span class="material-icons">delete</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="variants-pagination" *ngIf="variantsTotalPages > 1">
+          <button class="page-btn" [disabled]="variantsCurrentPage === 1" (click)="loadVariants(variantsCurrentPage - 1)">
+            <span class="material-icons">chevron_left</span>
+          </button>
+          <span class="pagination-info">{{ variantsCurrentPage }} / {{ variantsTotalPages }}</span>
+          <button class="page-btn" [disabled]="variantsCurrentPage === variantsTotalPages" (click)="loadVariants(variantsCurrentPage + 1)">
+            <span class="material-icons">chevron_right</span>
+          </button>
+        </div>
+
+        <div class="empty-kv" *ngIf="variants.length === 0 && !loadingVariants">
+          <span class="material-icons">info_outline</span>
+          <span>No hay variantes creadas aún. Usa "Nueva Variante" para agregar.</span>
+        </div>
+        <div class="loading-inline" *ngIf="loadingVariants">
+          <div class="spinner-small"></div>
+          <span>Cargando variantes...</span>
+        </div>
+      </div>
+
       <div class="form-section">
-        <h4>Multimedia</h4>
+        <h4 class="section-title">
+          <span class="material-icons">perm_media</span>
+          Media
+        </h4>
 
         <!-- Error de archivos -->
         <div *ngIf="fileError" class="file-error">
           <span class="material-icons">warning</span>
           {{ fileError }}
-          <button class="close-file-error" (click)="fileError = ''">×</button>
+          <button class="close-file-error" (click)="fileError = ''">
+            <span class="material-icons">close</span>
+          </button>
         </div>
 
         <!-- Imágenes del producto -->
         <div class="form-group full-width">
           <label>Imágenes del Producto (máx. {{ limits.IMAGE_MAX_COUNT }}, 5 MB c/u)</label>
 
-          <!-- Imágenes existentes (solo en edición) -->
           <div *ngIf="existingImageUrls.length > 0" class="existing-files">
             <span class="existing-label">Imágenes actuales:</span>
             <div class="image-preview-grid">
@@ -294,7 +525,6 @@
             </div>
           </div>
 
-          <!-- Drop zone para nuevas imágenes -->
           <div class="drop-zone"
                [class.drag-over]="dragOverImages"
                (dragover)="onDragOver($event); dragOverImages = true"
@@ -308,7 +538,6 @@
             <span class="drop-hint">JPG, PNG, WebP — máx. 5 MB cada una</span>
           </div>
 
-          <!-- Previews de nuevas imágenes -->
           <div *ngIf="imageFiles.length > 0" class="image-preview-grid">
             <div *ngFor="let url of imagePreviewUrls; let i = index" class="image-preview-item">
               <img [src]="url" alt="Preview" />
@@ -390,49 +619,62 @@
         </div>
       </div>
 
-      <!-- Garantía y opciones -->
       <div class="form-section">
-        <h4>Garantía y Opciones</h4>
-        <div class="form-row">
+        <h4 class="section-title">
+          <span class="material-icons">verified</span>
+          Garantía y Opciones
+        </h4>
+        <div class="form-grid">
           <div class="form-group">
-            <label>Tiempo de Garantía (meses)</label>
-            <input type="number" [(ngModel)]="formData.warrantyTime" min="0" />
+            <label>Tiempo Garantía (meses)</label>
+            <input type="number" [(ngModel)]="formData.warrantyTime" placeholder="0" min="0">
           </div>
-        </div>
-        <div class="form-row checkboxes">
-          <label class="checkbox-label">
-            <input type="checkbox" [(ngModel)]="formData.hasWarranty" /> Tiene Garantía
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" [(ngModel)]="formData.isNew" /> Es Nuevo
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" [(ngModel)]="formData.isOfferUnique" /> Oferta Única
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" [(ngModel)]="formData.showPrice" /> Mostrar Precio
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" [(ngModel)]="formData.state" /> Activo
-          </label>
+          <div class="form-group checkbox-row">
+            <label class="checkbox-label">
+              <input type="checkbox" [(ngModel)]="formData.hasWarranty">
+              <span>Tiene Garantía</span>
+            </label>
+          </div>
+          <div class="form-group checkbox-row">
+            <label class="checkbox-label">
+              <input type="checkbox" [(ngModel)]="formData.isNew">
+              <span>Es Nuevo</span>
+            </label>
+          </div>
+          <div class="form-group checkbox-row">
+            <label class="checkbox-label">
+              <input type="checkbox" [(ngModel)]="formData.isOfferUnique">
+              <span>Oferta Única</span>
+            </label>
+          </div>
+          <div class="form-group checkbox-row">
+            <label class="checkbox-label">
+              <input type="checkbox" [(ngModel)]="formData.showPrice">
+              <span>Mostrar Precio</span>
+            </label>
+          </div>
+          <div class="form-group checkbox-row">
+            <label class="checkbox-label">
+              <input type="checkbox" [(ngModel)]="formData.state">
+              <span>Activo</span>
+            </label>
+          </div>
         </div>
       </div>
     </div>
-
     <div class="modal-footer">
-      <button class="btn btn-secondary" (click)="closeModal()" [disabled]="saving">Cancelar</button>
-      <button class="btn btn-primary" (click)="saveProduct()"
-              [disabled]="!formData.name || !formData.specialityId || saving">
+      <button class="btn-secondary" (click)="closeModal()" [disabled]="saving">Cancelar</button>
+      <button class="btn-primary" (click)="saveProduct()" [disabled]="saving">
         <span *ngIf="saving" class="spinner-small"></span>
-        {{ saving ? 'Guardando...' : (modalMode === 'create' ? 'Crear' : 'Guardar') }}
+        {{ saving ? 'Guardando...' : (modalMode === 'create' ? 'Crear Producto' : 'Guardar Cambios') }}
       </button>
     </div>
   </div>
 </div>
 
-<!-- Modal Eliminar -->
+<!-- Modal Confirmar Eliminación -->
 <div class="modal-overlay" *ngIf="showDeleteConfirm" (click)="cancelDelete()">
-  <div class="modal-content modal-sm" (click)="$event.stopPropagation()">
+  <div class="modal modal-sm" (click)="$event.stopPropagation()">
     <div class="modal-header">
       <h3>Confirmar Eliminación</h3>
       <button class="close-btn" (click)="cancelDelete()">
@@ -440,12 +682,148 @@
       </button>
     </div>
     <div class="modal-body">
-      <p>¿Está seguro de eliminar el producto <strong>{{ productToDelete?.name }}</strong>?</p>
-      <p class="warning-text">Esta acción no se puede deshacer.</p>
+      <p class="delete-message">
+        ¿Estás seguro de que deseas eliminar el producto
+        <strong>{{ productToDelete?.name }}</strong>?
+        Esta acción no se puede deshacer.
+      </p>
+      <p class="delete-warning" *ngIf="productToDelete?.hasVariations">
+        <span class="material-icons">warning</span>
+        Este producto tiene variantes. Se eliminarán todas las variantes asociadas.
+      </p>
     </div>
     <div class="modal-footer">
-      <button class="btn btn-secondary" (click)="cancelDelete()">Cancelar</button>
-      <button class="btn btn-danger" (click)="deleteProduct()">Eliminar</button>
+      <button class="btn-secondary" (click)="cancelDelete()">Cancelar</button>
+      <button class="btn-danger" (click)="deleteProduct()">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Crear/Editar Variante -->
+<div class="modal-overlay" *ngIf="showVariantModal" (click)="closeVariantModal()">
+  <div class="modal modal-md" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>{{ variantModalMode === 'create' ? 'Nueva Variante' : 'Editar Variante' }}</h3>
+      <button class="close-btn" (click)="closeVariantModal()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Selección Primaria -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <span class="material-icons">filter_alt</span>
+          Combinación de Filtros
+        </h4>
+        <p class="section-hint">Selecciona los valores para cada atributo primario definido en el producto.</p>
+        <div class="form-grid">
+          <div class="form-group" *ngFor="let attr of primaryAttributes">
+            <label>{{ attr.name }} *</label>
+            <select [(ngModel)]="variantFormData.primarySelection[attr.name]">
+              <option value="">-- Seleccione --</option>
+              <option *ngFor="let opt of attr.options" [value]="opt">{{ opt }}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Precio y Stock de variante -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <span class="material-icons">attach_money</span>
+          Precio y Stock
+        </h4>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>SKU *</label>
+            <input type="text" [(ngModel)]="variantFormData.sku" placeholder="Código SKU de la variante">
+          </div>
+          <div class="form-group">
+            <label>Precio Proveedor *</label>
+            <input type="number" [(ngModel)]="variantFormData.priceProvider" placeholder="0.00" min="0" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Precio Venta *</label>
+            <input type="number" [(ngModel)]="variantFormData.priceSale" placeholder="0.00" min="0" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Stock *</label>
+            <input type="number" [(ngModel)]="variantFormData.stock" placeholder="0" min="0">
+          </div>
+          <div class="form-group">
+            <label>Descuento (%)</label>
+            <input type="number" [(ngModel)]="variantFormData.discount" placeholder="0" min="0" max="100" step="0.1">
+          </div>
+          <div class="form-group checkbox-row">
+            <label class="checkbox-label">
+              <input type="checkbox" [(ngModel)]="variantFormData.state">
+              <span>Activo</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Atributos Secundarios (specs) -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <span class="material-icons">description</span>
+          Especificaciones Técnicas (Atributos Secundarios)
+        </h4>
+        <p class="section-hint">Características técnicas específicas de esta variante.</p>
+
+        <div class="kv-table" *ngIf="variantSecondaryEntries.length > 0">
+          <div class="kv-header">
+            <span class="kv-col-key">Característica</span>
+            <span class="kv-col-value">Valor</span>
+            <span class="kv-col-action"></span>
+          </div>
+          <div class="kv-row" *ngFor="let entry of variantSecondaryEntries; let i = index">
+            <input type="text" class="kv-input" [(ngModel)]="entry.key" placeholder="Ej: Presión máxima">
+            <input type="text" class="kv-input" [(ngModel)]="entry.value" placeholder="Ej: 5000 psi">
+            <button class="btn-icon-sm danger" (click)="removeVariantSecondaryEntry(i)" title="Eliminar">
+              <span class="material-icons">close</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="empty-kv" *ngIf="variantSecondaryEntries.length === 0">
+          <span class="material-icons">info_outline</span>
+          <span>Sin especificaciones. Agrega con el botón de abajo.</span>
+        </div>
+
+        <button class="btn-add-row" (click)="addVariantSecondaryEntry()">
+          <span class="material-icons">add</span>
+          Agregar Especificación
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="closeVariantModal()" [disabled]="savingVariant">Cancelar</button>
+      <button class="btn-primary" (click)="saveVariant()" [disabled]="savingVariant">
+        <span *ngIf="savingVariant" class="spinner-small"></span>
+        {{ savingVariant ? 'Guardando...' : (variantModalMode === 'create' ? 'Crear Variante' : 'Guardar Cambios') }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmar Eliminación de Variante -->
+<div class="modal-overlay" *ngIf="showDeleteVariantConfirm" (click)="cancelDeleteVariant()">
+  <div class="modal modal-sm" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Eliminar Variante</h3>
+      <button class="close-btn" (click)="cancelDeleteVariant()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="delete-message">
+        ¿Eliminar la variante <strong>{{ variantToDelete?.sku }}</strong>?
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="cancelDeleteVariant()">Cancelar</button>
+      <button class="btn-danger" (click)="deleteVariant()">Eliminar</button>
     </div>
   </div>
 </div>

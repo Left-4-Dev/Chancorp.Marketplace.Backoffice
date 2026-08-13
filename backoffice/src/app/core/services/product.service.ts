@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { ApiResponse, ProductDto } from '../models';
+import { ApiResponse, ProductDto, ProductDetailResponse } from '../models';
 import { environment } from '../../../environments/environment';
 
 export interface ProductPaginatedResult {
@@ -35,8 +35,8 @@ export class ProductService {
     return this.http.get<ApiResponse<ProductPaginatedResult>>(this.apiUrl, { params });
   }
 
-  getById(id: string): Observable<ApiResponse<ProductDto>> {
-    return this.http.get<ApiResponse<ProductDto>>(`${this.apiUrl}/${id}`);
+  getById(id: string): Observable<ApiResponse<ProductDetailResponse>> {
+    return this.http.get<ApiResponse<ProductDetailResponse>>(`${this.apiUrl}/${id}`);
   }
 
   create(

@@ -1,35 +1,47 @@
 <div class="dashboard">
   <div class="dashboard-header">
-    <h2>Dashboard</h2>
-    <p>Bienvenido al panel de administración de Chancorp Marketplace</p>
+    <h2>Hola {{ displayName }}</h2>
+    <p>{{ isProvider ? 'Bienvenido a tu panel de proveedor' : 'Bienvenido al panel de administración de Chancorp Marketplace' }}</p>
   </div>
 
-  <div class="stats-grid">
-    <div class="stat-card" *ngFor="let stat of stats" [style.--accent-color]="stat.color">
-      <div class="stat-icon">
-        <span class="material-icons">{{ stat.icon }}</span>
-      </div>
-      <div class="stat-info">
-        <span class="stat-value">{{ stat.value }}</span>
-        <span class="stat-title">{{ stat.title }}</span>
+  <!-- Métricas del proveedor -->
+  <div class="metrics-section" *ngIf="isProvider">
+    <h3><span class="material-icons section-icon">bar_chart</span> Tus reportes</h3>
+
+    <!-- Error state -->
+    <div class="metrics-error" *ngIf="metricsError && !loadingMetrics">
+      <span class="material-icons error-icon">cloud_off</span>
+      <p>No se pudieron cargar las estadísticas</p>
+      <button class="retry-btn" (click)="retryMetrics()">
+        <span class="material-icons">refresh</span>
+        Reintentar
+      </button>
+    </div>
+
+    <!-- Metrics grid -->
+    <div class="metrics-grid" *ngIf="!metricsError">
+      <div class="metric-card" *ngFor="let metric of metrics" [style.--accent-color]="metric.color">
+        <div class="metric-icon" [class.skeleton]="metric.loading">
+          <span class="material-icons" *ngIf="!metric.loading">{{ metric.icon }}</span>
+        </div>
+        <div class="metric-info">
+          <span class="metric-title">{{ metric.title }}</span>
+          <span class="metric-value" *ngIf="!metric.loading">{{ metric.value }}</span>
+          <span class="skeleton-number" *ngIf="metric.loading"></span>
+        </div>
       </div>
     </div>
   </div>
 
-  <div class="quick-actions">
-    <h3>Acciones Rápidas</h3>
-    <div class="actions-grid">
-      <a routerLink="/categories" class="action-card">
-        <span class="material-icons">add_circle</span>
-        <span>Nueva Categoría</span>
-      </a>
-      <a routerLink="/subcategories" class="action-card">
-        <span class="material-icons">add_circle</span>
-        <span>Nueva Subcategoría</span>
-      </a>
-      <a routerLink="/products" class="action-card">
-        <span class="material-icons">add_circle</span>
-        <span>Nuevo Producto</span>
+  <!-- Accesos Rápidos -->
+  <div class="quick-access-section">
+    <h3>Accesos Rápidos</h3>
+    <div class="quick-access-grid">
+      <a *ngFor="let item of quickAccessItems" [routerLink]="item.route" class="quick-access-card">
+        <div class="quick-access-icon">
+          <span class="material-icons">{{ item.icon }}</span>
+        </div>
+        <span class="quick-access-label">{{ item.label }}</span>
       </a>
     </div>
   </div>

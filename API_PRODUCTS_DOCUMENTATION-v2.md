@@ -562,118 +562,166 @@ Retorna los proveedores de una categoría. **`categoryName` viene `null`** (redu
 
 Los productos se almacenan en **MongoDB** (no en PostgreSQL como el resto). Pertenecen a una especialidad y a un proveedor.
 
-**Archivos (imágenes, catálogo, video):** Se envían como archivos reales via `multipart/form-data`. El backend los sube a **Cloudinary** y guarda las URLs en MongoDB. El frontend **NO** necesita interactuar con Cloudinary directamente.
+### Modelo de Producto — Dos modalidades
+
+El sistema soporta **dos tipos de productos** en una misma colección, diferenciados por el campo `hasVariations`:
+
+| Modo | `hasVariations` | Descripción | Ejemplo |
+|------|----------------|-------------|---------|
+| **Producto Simple** | `false` | Producto único con precio, stock y atributos propios | "Laptop Gaming ASUS ROG" |
+| **Producto con Variantes** | `true` | Producto "familia" que agrupa N variantes (subproductos), cada una con su precio/stock | "Válvulas de control de flujo en línea - Serie F" con 251 variantes |
+
+**Analogía visual:**
+- Producto Simple = una ficha de producto con precio y "Agregar al carrito" directo.
+- Producto con Variantes = una ficha tipo Alibaba donde el usuario selecciona combinaciones de filtros (Material, Diámetro, Voltaje, etc.) y cada combinación es una variante con su propio SKU, precio y stock.
+
+**Archivos (imágenes, catálogo, video):** Se envían como archivos reales via `multipart/form-data`. El backend los sube a **Cloudinary** y guarda las URLs en MongoDB. Las imágenes solo viven en el producto principal — las variantes NO tienen imagen propia.
 
 ### Interfaces TypeScript
 
 ```typescript
-// Respuesta del backend (GET, POST, PUT) — no cambia
+// ═══════════════════════════════════════════════════════════
+// PRODUCTO (colección: products)
+// ═══════════════════════════════════════════════════════════
+
 interface ProductDto {
-  id: string;                          // ObjectId de MongoDB (string, NO number)
-  providerId: number;                  // ID del proveedor (del otro backend)
-  specialityId: number;                // FK → Speciality.id
+  id: string;                             // ObjectId de MongoDB (string, NO number)
+  providerId: number;                     // ID del proveedor (del otro backend)
+  specialityId: number;                   // FK → Speciality.id
   name: string;
-  sku: string;
+  sku: string;                            // SKU del producto (vacío si hasVariations=true)
   brand: string;
   description: string;
   countryOrigin: string;
-  priceProvider: number;               // Precio del proveedor (decimal)
-  priceSale: number;                   // Precio de venta al público (decimal)
-  stock: number;
-  datasheet?: Record<string, any>;     // Especificaciones técnicas (objeto dinámico)
-  variations?: Record<string, any>[];  // Variaciones: color, talla, etc. (array dinámico)
-  catalog: string;                     // URL del PDF en Cloudinary
-  productImg: string[];                // URLs de imágenes en Cloudinary
-  productVideo: string;                // URL del video en Cloudinary
-  warrantyTime: number;                // Meses de garantía
+  productImg: string[];                   // URLs de imágenes en Cloudinary
+  productVideo: string;                   // URL del video en Cloudinary
+  catalogPdf: string;                     // URL del PDF catálogo en Cloudinary
+  hasVariations: boolean;                 // DISCRIMINADOR: false=simple, true=con variantes
+
+  // ─── Campos SOLO producto simple (hasVariations = false) ───
+  priceProvider?: number;                 // Precio del proveedor (null si tiene variantes)
+  priceSale?: number;                     // Precio de venta (null si tiene variantes)
+  stock?: number;                         // Stock disponible (null si tiene variantes)
+  discount?: number;                      // % descuento (null si tiene variantes)
+  attributes?: Record<string, any>;       // Specs técnicos dinámicos (null si tiene variantes)
+
+  // ─── Campos SOLO producto con variantes (hasVariations = true) ───
+  primaryAttributes?: PrimaryAttributeDto[];  // Definición de filtros (null si es simple)
+
+  // ─── Campos comunes ───
+  warrantyTime: number;
   hasWarranty: boolean;
-  discount: number;                    // Porcentaje de descuento (ej: 10.0 = 10%)
   isNew: boolean;
   isOfferUnique: boolean;
-  showPrice: boolean;                  // Si se muestra el precio en el frontend
+  showPrice: boolean;
   state: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-// Para construir el FormData en el POST
-interface CreateProductFormFields {
-  providerId: number;
-  specialityId: number;
-  name: string;
-  sku: string;
-  brand: string;
-  description: string;
-  countryOrigin: string;
-  priceProvider: number;
-  priceSale: number;
-  stock: number;
-  datasheetJson?: string;              // JSON.stringify(Record<string, any>)
-  variationsJson?: string;             // JSON.stringify(Record<string, any>[])
-  warrantyTime: number;
-  hasWarranty: boolean;
-  discount: number;
-  isNew: boolean;
-  isOfferUnique: boolean;
-  showPrice: boolean;
-  state: boolean;
-  // Archivos — se envían como File en el FormData
-  productImages?: File[];              // Imágenes del producto (múltiples)
-  catalogFile?: File;                  // PDF del catálogo (uno solo)
-  videoFile?: File;                    // Video del producto (uno solo)
+// Definición de un atributo primario (filtro)
+interface PrimaryAttributeDto {
+  name: string;                           // Ej: "Diámetro", "Material", "Voltaje"
+  options: string[];                      // Ej: ["1\"", "2\"", "4\"", "6\""]
 }
 
-// Para construir el FormData en el PUT — actualización PARCIAL
-interface UpdateProductFormFields {
-  id: string;                          // ObjectId (requerido siempre)
-  providerId?: number;
-  specialityId?: number;
-  name?: string;
-  sku?: string;
-  brand?: string;
-  description?: string;
-  countryOrigin?: string;
-  priceProvider?: number;
-  priceSale?: number;
-  stock?: number;
-  datasheetJson?: string;              // JSON.stringify(Record<string, any>)
-  variationsJson?: string;             // JSON.stringify(Record<string, any>[])
-  warrantyTime?: number;
-  hasWarranty?: boolean;
-  discount?: number;
-  isNew?: boolean;
-  isOfferUnique?: boolean;
-  showPrice?: boolean;
-  state?: boolean;
-  // Archivos — si se envían, REEMPLAZAN los anteriores en Cloudinary
-  productImages?: File[];              // Si se envían, reemplazan TODAS las imágenes
-  catalogFile?: File;                  // Si se envía, reemplaza el catálogo anterior
-  videoFile?: File;                    // Si se envía, reemplaza el video anterior
+// ═══════════════════════════════════════════════════════════
+// VARIANTE DE PRODUCTO (colección: productVariants)
+// ═══════════════════════════════════════════════════════════
+
+interface ProductVariantDto {
+  id: string;                             // ObjectId de MongoDB
+  productId: string;                      // Referencia al producto padre
+  sku: string;                            // SKU único de esta variante (ej: "8F1200S")
+  primarySelection: Record<string, any>;  // Valores seleccionados de los filtros primarios
+                                          // Ej: { "Diámetro": "2\"", "Material": "Inox 316" }
+  secondaryAttributes: Record<string, any>; // Specs específicos de esta variante
+                                          // Ej: { "Función": "Flow Control", "Presión máxima": "5000 psi" }
+  priceProvider: number;                  // Precio proveedor de esta variante
+  priceSale: number;                      // Precio venta de esta variante
+  stock: number;                          // Stock de esta variante
+  discount: number;                       // % descuento de esta variante
+  state: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 ```
 
-### Endpoints
+### Relación entre Producto y Variantes
+
+```
+Product (hasVariations = true)
+  ├── name: "Válvulas de control de flujo en línea - Serie F"
+  ├── brand: "Colorflow"
+  ├── primaryAttributes: [
+  │     { name: "Material", options: ["Inox 316", "Bronce", "Hierro fund."] },
+  │     { name: "Diámetro", options: ["1\"", "2\"", "4\"", "6\""] },
+  │     { name: "Conexión", options: ["NPT", "SAE", "BSPT"] }
+  │   ]
+  │
+  └── ProductVariants (N documentos en otra colección):
+        ├── { sku: "8F1200S", primarySelection: { "Material": "Inox 316", "Diámetro": "2\"" },
+        │     secondaryAttributes: { "Función": "Flow Control", "Presión": "5000 psi" },
+        │     priceProvider: 120, priceSale: 180, stock: 50 }
+        ├── { sku: "8F200S", primarySelection: { "Material": "Bronce", "Diámetro": "1\"" },
+        │     secondaryAttributes: { "Función": "Flow Control", "Presión": "3000 psi" },
+        │     priceProvider: 80, priceSale: 120, stock: 30 }
+        └── ... (hasta 251+ variantes)
+```
+
+**Para el frontend:**
+- Los `primaryAttributes` del producto padre definen los **filtros** que se muestran como selectores/botones.
+- Cuando el usuario selecciona una combinación de filtros, se consultan las variantes que coincidan con esa `primarySelection`.
+- Los `secondaryAttributes` se muestran como tabla de especificaciones técnicas de la variante seleccionada.
+
+### Endpoints de Productos
 
 | Método | Endpoint | Content-Type | Descripción | Respuesta exitosa |
 |--------|----------|-------------|-------------|-------------------|
 | GET | `/api/Products?providerId=X&specialityId=Y&pageNumber=1&pageSize=10` | — | Listar paginado (filtros obligatorios) | `data: PaginatedResult<ProductDto>` |
-| GET | `/api/Products/{id}` | — | Obtener por ID | `data: ProductDto` |
-| POST | `/api/Products` | `multipart/form-data` | Crear con archivos | `data: ProductDto` |
+| GET | `/api/Products/{id}` | — | Obtener por ID (incluye variantes si las tiene) | `data: { product, variants }` |
+| POST | `/api/Products` | `multipart/form-data` | Crear producto (simple o con variantes) | `data: ProductDto` |
 | PUT | `/api/Products` | `multipart/form-data` | Actualizar (parcial) con archivos | `data: ProductDto` |
-| DELETE | `/api/Products/{id}` | — | Eliminar (incluye archivos de Cloudinary) | `data: null` |
+| DELETE | `/api/Products/{id}` | — | Eliminar (cascade: elimina variantes + archivos Cloudinary) | `data: null` |
 
 **IMPORTANTE para el frontend:**
 - El `id` de productos es `string` (MongoDB ObjectId), no `number`.
 - `GET /api/Products` requiere **2 query params obligatorios**: `providerId`, `specialityId`.
-- La respuesta paginada viene en **`data`** (NO en `dataLista`).
-- `PUT` recibe el `id` en el FormData (no en la URL). Solo actualiza los campos enviados.
+- `GET /api/Products/{id}` retorna **producto + variantes** cuando `hasVariations = true`.
+- `DELETE` elimina automáticamente todas las variantes asociadas y archivos de Cloudinary.
 - `pageSize` máximo es 50. Default: 10.
 - **POST y PUT usan `multipart/form-data`** — NO `application/json`. Usar `FormData` en el frontend.
-- **NO setear `Content-Type` manualmente** en el `HttpClient` para POST/PUT de Products. El browser lo pone automáticamente con el boundary correcto.
-- **`datasheetJson` y `variationsJson`** son strings que contienen JSON serializado (usar `JSON.stringify()`).
-- **`productImages`** es el nombre del campo para múltiples archivos de imagen. Se puede hacer `formData.append('productImages', file)` múltiples veces.
-- **Archivos en PUT**: Si se envían `productImages`, `catalogFile` o `videoFile`, los archivos anteriores se **eliminan de Cloudinary** y se reemplazan. Si NO se envían, los archivos existentes se mantienen.
-- **DELETE** elimina automáticamente todos los archivos del producto en Cloudinary (imágenes, catálogo, video).
+- **NO setear `Content-Type` manualmente** en el `HttpClient` para POST/PUT de Products.
+
+#### Campos del FormData para POST/PUT de Productos
+
+| Campo | Tipo | Requerido POST | Descripción |
+|-------|------|----------------|-------------|
+| `providerId` | string (número) | Sí | ID del proveedor |
+| `specialityId` | string (número) | Sí | ID de la especialidad |
+| `name` | string | Sí | Nombre del producto |
+| `sku` | string | Solo simple | Código SKU (vacío si tiene variantes) |
+| `brand` | string | Sí | Marca |
+| `description` | string | Sí | Descripción |
+| `countryOrigin` | string | Sí | País de origen |
+| `hasVariations` | string (boolean) | Sí | `"true"` o `"false"` — **define el modo** |
+| `priceProvider` | string (decimal) | Solo simple | Precio del proveedor |
+| `priceSale` | string (decimal) | Solo simple | Precio de venta |
+| `stock` | string (número) | Solo simple | Stock disponible |
+| `discount` | string (decimal) | Solo simple | Porcentaje de descuento |
+| `attributesJson` | string | Solo simple | `JSON.stringify({...})` specs técnicos dinámicos |
+| `primaryAttributesJson` | string | Solo variantes | `JSON.stringify([{name, options}])` definición de filtros |
+| `warrantyTime` | string (número) | Sí | Meses de garantía |
+| `hasWarranty` | string (boolean) | Sí | `"true"` o `"false"` |
+| `isNew` | string (boolean) | Sí | `"true"` o `"false"` |
+| `isOfferUnique` | string (boolean) | Sí | `"true"` o `"false"` |
+| `showPrice` | string (boolean) | Sí | `"true"` o `"false"` |
+| `state` | string (boolean) | Sí | `"true"` o `"false"` |
+| `productImages` | File (múltiple) | No | Archivos de imagen (jpg, png, webp) |
+| `catalogFile` | File | No | Archivo PDF del catálogo |
+| `videoFile` | File | No | Archivo de video (mp4, webm) |
+
+**En PUT:** Solo enviar campos a modificar + `id` obligatorio. Para archivos: si se envían, reemplazan los anteriores.
 
 #### GET /api/Products — Listado paginado
 
@@ -695,28 +743,55 @@ interface UpdateProductFormFields {
         "brand": "ASUS",
         "description": "Laptop gaming de alta gama con RTX 4080",
         "countryOrigin": "Taiwan",
+        "productImg": ["https://res.cloudinary.com/.../img1.jpg"],
+        "productVideo": "",
+        "catalogPdf": "https://res.cloudinary.com/.../catalog.pdf",
+        "hasVariations": false,
         "priceProvider": 1500.00,
         "priceSale": 1899.99,
         "stock": 50,
-        "datasheet": {
-          "processor": "Intel Core i9-13900H",
-          "ram": "32GB DDR5"
-        },
-        "variations": [
-          { "color": "Negro", "storage": "1TB", "additionalPrice": 0 }
-        ],
-        "catalog": "https://res.cloudinary.com/dyaswn2t2/raw/upload/v1713/chancorp-marketplace/products/1/catalogs/gaming-laptops-2026.pdf",
-        "productImg": ["https://res.cloudinary.com/dyaswn2t2/image/upload/v1713/chancorp-marketplace/products/1/images/img1.jpg"],
-        "productVideo": "",
+        "discount": 10.0,
+        "attributes": { "processor": "Intel Core i9-13900H", "ram": "32GB DDR5" },
+        "primaryAttributes": null,
         "warrantyTime": 24,
         "hasWarranty": true,
-        "discount": 10.0,
         "isNew": true,
         "isOfferUnique": false,
         "showPrice": true,
         "state": true,
         "createdAt": "2026-02-16T10:50:00Z",
         "updatedAt": "2026-02-16T10:50:00Z"
+      },
+      {
+        "id": "65f1a2b3c4d5e6f7g8h9i0j2",
+        "providerId": 1,
+        "specialityId": 2,
+        "name": "Válvulas de control de flujo - Serie F",
+        "sku": "",
+        "brand": "Colorflow",
+        "description": "Válvulas hidráulicas de control de flujo en línea",
+        "countryOrigin": "USA",
+        "productImg": ["https://res.cloudinary.com/.../valve1.jpg"],
+        "productVideo": "",
+        "catalogPdf": "https://res.cloudinary.com/.../valves.pdf",
+        "hasVariations": true,
+        "priceProvider": null,
+        "priceSale": null,
+        "stock": null,
+        "discount": null,
+        "attributes": null,
+        "primaryAttributes": [
+          { "name": "Material", "options": ["Inox 316", "Bronce", "Hierro fund."] },
+          { "name": "Diámetro", "options": ["1\"", "2\"", "4\"", "6\""] }
+        ],
+        "warrantyTime": 12,
+        "hasWarranty": true,
+        "isNew": false,
+        "isOfferUnique": false,
+        "showPrice": true,
+        "state": true,
+        "createdAt": "2026-04-10T14:30:00Z",
+        "updatedAt": "2026-04-10T14:30:00Z"
       }
     ],
     "pageNumber": 1,
@@ -727,46 +802,88 @@ interface UpdateProductFormFields {
 }
 ```
 
-**Si la especialidad no existe:**
+#### GET /api/Products/{id} — Obtener producto por ID
+
+**Respuesta especial:** Retorna el producto **+ sus variantes** (si `hasVariations = true`).
+
+**Response para producto simple (`hasVariations = false`):**
 ```json
 {
-  "success": false,
-  "mensaje": "La especialidad no existe"
+  "success": true,
+  "mensaje": "Producto encontrado",
+  "data": {
+    "product": {
+      "id": "65f1a2b3c4d5e6f7g8h9i0j1",
+      "hasVariations": false,
+      "priceProvider": 1500.00,
+      "priceSale": 1899.99,
+      "stock": 50,
+      "attributes": { "processor": "i9-13900H", "ram": "32GB DDR5" },
+      "primaryAttributes": null,
+      "...": "demás campos"
+    },
+    "variants": null
+  }
 }
 ```
 
-#### POST /api/Products — Crear producto (multipart/form-data)
+**Response para producto con variantes (`hasVariations = true`):**
+```json
+{
+  "success": true,
+  "mensaje": "Producto encontrado",
+  "data": {
+    "product": {
+      "id": "65f1a2b3c4d5e6f7g8h9i0j2",
+      "name": "Válvulas de control de flujo - Serie F",
+      "hasVariations": true,
+      "priceProvider": null,
+      "priceSale": null,
+      "stock": null,
+      "attributes": null,
+      "primaryAttributes": [
+        { "name": "Material", "options": ["Inox 316", "Bronce", "Hierro fund."] },
+        { "name": "Diámetro", "options": ["1\"", "2\"", "4\"", "6\""] },
+        { "name": "Conexión", "options": ["NPT", "SAE", "BSPT", "BSPP"] }
+      ],
+      "...": "demás campos"
+    },
+    "variants": [
+      {
+        "id": "66a1b2c3d4e5f6g7h8i9j0k1",
+        "productId": "65f1a2b3c4d5e6f7g8h9i0j2",
+        "sku": "8F1200S",
+        "primarySelection": { "Material": "Inox 316", "Diámetro": "2\"", "Conexión": "NPT" },
+        "secondaryAttributes": { "Función": "Flow Control", "Presión máxima": "5000 psi", "Caudal": "25 gal/min" },
+        "priceProvider": 120.00,
+        "priceSale": 180.00,
+        "stock": 50,
+        "discount": 0,
+        "state": true,
+        "createdAt": "2026-04-10T15:00:00Z",
+        "updatedAt": "2026-04-10T15:00:00Z"
+      },
+      {
+        "id": "66a1b2c3d4e5f6g7h8i9j0k2",
+        "productId": "65f1a2b3c4d5e6f7g8h9i0j2",
+        "sku": "8F200S",
+        "primarySelection": { "Material": "Bronce", "Diámetro": "1\"", "Conexión": "SAE" },
+        "secondaryAttributes": { "Función": "Flow Control", "Presión máxima": "3000 psi", "Caudal": "3 gal/min" },
+        "priceProvider": 80.00,
+        "priceSale": 120.00,
+        "stock": 30,
+        "discount": 5,
+        "state": true,
+        "createdAt": "2026-04-10T15:05:00Z",
+        "updatedAt": "2026-04-10T15:05:00Z"
+      }
+    ]
+  }
+}
+```
 
-**Formato:** `multipart/form-data` — NO JSON.
+#### POST /api/Products — Crear producto simple
 
-**Campos del FormData:**
-
-| Campo | Tipo | Requerido | Descripción |
-|-------|------|-----------|-------------|
-| `providerId` | string (número) | Sí | ID del proveedor |
-| `specialityId` | string (número) | Sí | ID de la especialidad |
-| `name` | string | Sí | Nombre del producto |
-| `sku` | string | Sí | Código SKU |
-| `brand` | string | Sí | Marca |
-| `description` | string | Sí | Descripción |
-| `countryOrigin` | string | Sí | País de origen |
-| `priceProvider` | string (decimal) | Sí | Precio del proveedor |
-| `priceSale` | string (decimal) | Sí | Precio de venta |
-| `stock` | string (número) | Sí | Stock disponible |
-| `datasheetJson` | string | No | `JSON.stringify({...})` con especificaciones técnicas |
-| `variationsJson` | string | No | `JSON.stringify([{...}])` con variaciones |
-| `warrantyTime` | string (número) | Sí | Meses de garantía |
-| `hasWarranty` | string (boolean) | Sí | `"true"` o `"false"` |
-| `discount` | string (decimal) | Sí | Porcentaje de descuento |
-| `isNew` | string (boolean) | Sí | `"true"` o `"false"` |
-| `isOfferUnique` | string (boolean) | Sí | `"true"` o `"false"` |
-| `showPrice` | string (boolean) | Sí | `"true"` o `"false"` |
-| `state` | string (boolean) | Sí | `"true"` o `"false"` |
-| `productImages` | File (múltiple) | No | Archivos de imagen (jpg, png, webp) |
-| `catalogFile` | File | No | Archivo PDF del catálogo |
-| `videoFile` | File | No | Archivo de video (mp4, webm) |
-
-**Ejemplo en TypeScript/Angular:**
 ```typescript
 const formData = new FormData();
 formData.append('providerId', '1');
@@ -776,101 +893,352 @@ formData.append('sku', 'ASUS-ROG-001');
 formData.append('brand', 'ASUS');
 formData.append('description', 'Laptop gaming de alta gama con RTX 4080');
 formData.append('countryOrigin', 'Taiwan');
+formData.append('hasVariations', 'false');  // ← PRODUCTO SIMPLE
 formData.append('priceProvider', '1500.00');
 formData.append('priceSale', '1899.99');
 formData.append('stock', '50');
-formData.append('datasheetJson', JSON.stringify({
+formData.append('discount', '10.0');
+formData.append('attributesJson', JSON.stringify({
   processor: 'Intel Core i9-13900H',
   ram: '32GB DDR5',
   storage: '1TB NVMe SSD'
 }));
-formData.append('variationsJson', JSON.stringify([
-  { color: 'Negro', storage: '1TB', additionalPrice: 0 },
-  { color: 'Gris', storage: '2TB', additionalPrice: 200 }
-]));
 formData.append('warrantyTime', '24');
 formData.append('hasWarranty', 'true');
-formData.append('discount', '10.0');
 formData.append('isNew', 'true');
 formData.append('isOfferUnique', 'false');
 formData.append('showPrice', 'true');
 formData.append('state', 'true');
+formData.append('productImages', imageFile1);
+formData.append('productImages', imageFile2);
+formData.append('catalogFile', pdfFile);
 
-// Archivos — desde un <input type="file"> o drag & drop
-formData.append('productImages', imageFile1);  // File object
-formData.append('productImages', imageFile2);  // Mismo nombre para múltiples
-formData.append('catalogFile', pdfFile);        // File object
-formData.append('videoFile', videoFile);         // File object
-
-// IMPORTANTE: NO setear Content-Type en headers
 this.http.post<Response>('http://localhost:5058/api/Products', formData).subscribe(...);
 ```
 
-→ `200 OK` con `data: ProductDto` (incluye el `id` generado por MongoDB y las URLs de Cloudinary en `productImg`, `catalog`, `productVideo`).
+#### POST /api/Products — Crear producto con variantes
 
-**Response ejemplo:**
+```typescript
+const formData = new FormData();
+formData.append('providerId', '1');
+formData.append('specialityId', '3');
+formData.append('name', 'Válvulas de control de flujo - Serie F');
+formData.append('brand', 'Colorflow');
+formData.append('description', 'Válvulas hidráulicas control flujo en línea');
+formData.append('countryOrigin', 'USA');
+formData.append('hasVariations', 'true');  // ← PRODUCTO CON VARIANTES
+// NO enviar: priceProvider, priceSale, stock, discount, attributesJson
+formData.append('primaryAttributesJson', JSON.stringify([
+  { name: 'Material', options: ['Inox 316', 'Bronce', 'Hierro fund.'] },
+  { name: 'Diámetro', options: ['1"', '2"', '4"', '6"'] },
+  { name: 'Conexión', options: ['NPT', 'SAE', 'BSPT', 'BSPP'] }
+]));
+formData.append('warrantyTime', '12');
+formData.append('hasWarranty', 'true');
+formData.append('isNew', 'false');
+formData.append('isOfferUnique', 'false');
+formData.append('showPrice', 'true');
+formData.append('state', 'true');
+formData.append('productImages', valveImage1);
+formData.append('catalogFile', valvesCatalogPdf);
+
+this.http.post<Response>('http://localhost:5058/api/Products', formData).subscribe(...);
+```
+
+**Después de crear el producto con variantes**, se crean las variantes individualmente via `POST /api/ProductVariants`.
+
+#### DELETE /api/Products/{id} — Eliminar producto
+
+**Ejemplo:** `DELETE /api/Products/65f1a2b3c4d5e6f7g8h9i0j1`
+
+**Comportamiento:**
+1. Elimina todas las imágenes, catálogo y video de Cloudinary.
+2. Si `hasVariations = true`, elimina **TODAS** las variantes asociadas (cascade delete).
+3. Elimina el documento del producto de MongoDB.
+
+→ `200 OK` con `"mensaje": "Producto eliminado"`. `404` si no existe.
+
+---
+
+## Módulo: ProductVariants (Variantes de Producto)
+
+Las variantes son subproductos que pertenecen a un producto con `hasVariations = true`. Cada variante representa una combinación específica de los filtros primarios (ej: Material="Inox 316" + Diámetro="2\"") con su propio SKU, precio, stock y especificaciones secundarias.
+
+**Almacenamiento:** Colección separada `productVariants` en MongoDB (NO embebidas en el producto padre). Esto permite queries eficientes y evita el límite de 16MB de MongoDB para productos con 200+ variantes.
+
+### Interfaces TypeScript (Request)
+
+```typescript
+// Para el POST
+interface CreateProductVariantRequest {
+  productId: string;                      // ID del producto padre (debe existir y tener hasVariations=true)
+  sku: string;                            // SKU único de esta variante
+  primarySelection: Record<string, any>;  // Combinación de filtros seleccionados
+  secondaryAttributes: Record<string, any>; // Specs técnicos de esta variante
+  priceProvider: number;
+  priceSale: number;
+  stock: number;
+  discount: number;
+  state: boolean;
+}
+
+// Para el PUT
+interface UpdateProductVariantRequest {
+  id: string;                             // ID de la variante (requerido)
+  sku?: string;
+  primarySelection?: Record<string, any>;
+  secondaryAttributes?: Record<string, any>;
+  priceProvider?: number;
+  priceSale?: number;
+  stock?: number;
+  discount?: number;
+  state?: boolean;
+}
+```
+
+### Endpoints de Variantes
+
+| Método | Endpoint | Content-Type | Descripción | Respuesta exitosa |
+|--------|----------|-------------|-------------|-------------------|
+| GET | `/api/ProductVariants/by-product/{productId}?pageNumber=1&pageSize=50&filters[key]=value` | — | Variantes de un producto (con filtros dinámicos) | `data: PaginatedResult<ProductVariantDto>` |
+| GET | `/api/ProductVariants/{id}` | — | Obtener variante por ID | `data: ProductVariantDto` |
+| POST | `/api/ProductVariants` | `application/json` | Crear variante | `data: ProductVariantDto` |
+| POST | `/api/ProductVariants/bulk` | `application/json` | Crear variantes en lote | `dataLista: ProductVariantDto[]` |
+| PUT | `/api/ProductVariants` | `application/json` | Actualizar variante (parcial) | `data: ProductVariantDto` |
+| DELETE | `/api/ProductVariants/{id}` | — | Eliminar variante | `data: null` |
+
+**IMPORTANTE:**
+- Las variantes usan `application/json` (NO multipart/form-data) porque no tienen archivos.
+- El `productId` debe referir a un producto con `hasVariations = true`, sino retorna error.
+- `pageSize` máximo es 200 para variantes (productos pueden tener muchas).
+- Los **filtros dinámicos** se pasan como query params: `?filters[Material]=Inox 316&filters[Diámetro]=2"` para filtrar variantes por su `primarySelection`.
+
+#### GET /api/ProductVariants/by-product/{productId} — Listar variantes con filtros
+
+**Sin filtros (todas las variantes):**
+```
+GET /api/ProductVariants/by-product/65f1a2b3c4d5e6f7g8h9i0j2?pageNumber=1&pageSize=50
+```
+
+**Con filtros dinámicos (filtrar por combinación de primarias):**
+```
+GET /api/ProductVariants/by-product/65f1a2b3c4d5e6f7g8h9i0j2?pageNumber=1&pageSize=50&filters[Material]=Inox%20316&filters[Diámetro]=2"
+```
+
+**Response `200 OK`:**
 ```json
 {
   "success": true,
-  "mensaje": "Producto creado",
+  "mensaje": "Variantes encontradas",
   "data": {
-    "id": "65f1a2b3c4d5e6f7g8h9i0j1",
-    "providerId": 1,
-    "specialityId": 1,
-    "name": "Laptop Gaming ASUS ROG",
-    "catalog": "https://res.cloudinary.com/dyaswn2t2/raw/upload/v1713/chancorp-marketplace/products/1/catalogs/dell-2026.pdf",
-    "productImg": [
-      "https://res.cloudinary.com/dyaswn2t2/image/upload/v1713/chancorp-marketplace/products/1/images/img1.jpg",
-      "https://res.cloudinary.com/dyaswn2t2/image/upload/v1713/chancorp-marketplace/products/1/images/img2.jpg"
+    "items": [
+      {
+        "id": "66a1b2c3d4e5f6g7h8i9j0k1",
+        "productId": "65f1a2b3c4d5e6f7g8h9i0j2",
+        "sku": "8F1200S",
+        "primarySelection": { "Material": "Inox 316", "Diámetro": "2\"", "Conexión": "NPT" },
+        "secondaryAttributes": {
+          "Función": "Flow Control",
+          "Presión de trabajo máxima": "5000 psi",
+          "Índice de caudal máximo": "25 gal/min",
+          "Temperatura máxima": "+250 °F",
+          "Temperatura mínima": "-40 °F",
+          "Tipo de accionamiento": "Manual",
+          "Estilo del resorte": "Metal",
+          "Material de la junta": "Nitrile"
+        },
+        "priceProvider": 120.00,
+        "priceSale": 180.00,
+        "stock": 50,
+        "discount": 0,
+        "state": true,
+        "createdAt": "2026-04-10T15:00:00Z",
+        "updatedAt": "2026-04-10T15:00:00Z"
+      }
     ],
-    "productVideo": "https://res.cloudinary.com/dyaswn2t2/video/upload/v1713/chancorp-marketplace/products/1/videos/demo.mp4",
-    "...": "demás campos"
+    "pageNumber": 1,
+    "pageSize": 50,
+    "totalCount": 1,
+    "totalPages": 1
   }
 }
 ```
 
-#### PUT /api/Products — Actualizar producto (parcial, multipart/form-data)
-
-**Formato:** `multipart/form-data` — NO JSON.
-
-Solo enviar en el FormData los campos que se quieren actualizar + `id` obligatorio. Los campos no enviados mantienen su valor actual.
-
-**Reglas de archivos en PUT:**
-- Si se envía `productImages` → se **eliminan TODAS** las imágenes anteriores de Cloudinary y se suben las nuevas.
-- Si se envía `catalogFile` → se **elimina** el catálogo anterior de Cloudinary y se sube el nuevo.
-- Si se envía `videoFile` → se **elimina** el video anterior de Cloudinary y se sube el nuevo.
-- Si **NO** se envían archivos → los archivos existentes se mantienen intactos.
-
-**Ejemplo — actualizar solo precio y stock (sin cambiar archivos):**
-```typescript
-const formData = new FormData();
-formData.append('id', '65f1a2b3c4d5e6f7g8h9i0j1');
-formData.append('priceSale', '1799.99');
-formData.append('stock', '45');
-formData.append('discount', '15.0');
-
-this.http.put<Response>('http://localhost:5058/api/Products', formData).subscribe(...);
+**Errores posibles:**
+```json
+{ "success": false, "mensaje": "Producto no encontrado" }
+{ "success": false, "mensaje": "El producto no tiene variantes" }
 ```
 
-**Ejemplo — reemplazar imágenes del producto:**
-```typescript
-const formData = new FormData();
-formData.append('id', '65f1a2b3c4d5e6f7g8h9i0j1');
-formData.append('productImages', newImageFile1);
-formData.append('productImages', newImageFile2);
-// Las imágenes anteriores se eliminan de Cloudinary automáticamente
+#### POST /api/ProductVariants — Crear variante
 
-this.http.put<Response>('http://localhost:5058/api/Products', formData).subscribe(...);
+**Request body (`application/json`):**
+```json
+{
+  "productId": "65f1a2b3c4d5e6f7g8h9i0j2",
+  "sku": "8F1200S",
+  "primarySelection": {
+    "Material": "Inox 316",
+    "Diámetro": "2\"",
+    "Conexión": "NPT"
+  },
+  "secondaryAttributes": {
+    "Función": "Flow Control",
+    "Presión de trabajo máxima": "5000 psi",
+    "Índice de caudal máximo": "25 gal/min",
+    "Temperatura máxima": "+250 °F",
+    "Temperatura mínima": "-40 °F",
+    "Tipo de accionamiento": "Manual",
+    "Estilo del resorte": "Metal",
+    "Material de la junta": "Nitrile"
+  },
+  "priceProvider": 120.00,
+  "priceSale": 180.00,
+  "stock": 50,
+  "discount": 0,
+  "state": true
+}
 ```
 
-→ `200 OK` con `data: ProductDto` completo (con URLs actualizadas). `404` si no existe.
+**Response `200 OK`:**
+```json
+{
+  "success": true,
+  "mensaje": "Variante creada",
+  "data": {
+    "id": "66a1b2c3d4e5f6g7h8i9j0k1",
+    "productId": "65f1a2b3c4d5e6f7g8h9i0j2",
+    "sku": "8F1200S",
+    "primarySelection": { "Material": "Inox 316", "Diámetro": "2\"", "Conexión": "NPT" },
+    "secondaryAttributes": { "...": "..." },
+    "priceProvider": 120.00,
+    "priceSale": 180.00,
+    "stock": 50,
+    "discount": 0,
+    "state": true,
+    "createdAt": "2026-04-10T15:00:00Z",
+    "updatedAt": "2026-04-10T15:00:00Z"
+  }
+}
+```
 
-#### DELETE /api/Products/{id}
+**Errores posibles:**
+```json
+{ "success": false, "mensaje": "Producto padre no encontrado" }
+{ "success": false, "mensaje": "El producto no admite variantes (HasVariations = false)" }
+```
 
-**Ejemplo:** `DELETE /api/Products/65f1a2b3c4d5e6f7g8h9i0j1`
-→ `200 OK` con `"mensaje": "Producto eliminado"`. `404` si no existe.
+#### POST /api/ProductVariants/bulk — Crear variantes en lote
 
-**Comportamiento:** Además de eliminar el documento de MongoDB, el backend **elimina automáticamente** de Cloudinary todas las imágenes, el catálogo PDF y el video asociados al producto. No se requiere acción adicional del frontend.
+**Caso de uso:** El frontend envía todas las variantes de un producto de una sola vez (50-250+ variantes). Ideal para UX de creación masiva.
+
+**Request body (`application/json`):**
+```json
+{
+  "productId": "65f1a2b3c4d5e6f7g8h9i0j2",
+  "variants": [
+    {
+      "sku": "8F1200S",
+      "primarySelection": {
+        "Material": "Inox 316",
+        "Diámetro": "2\"",
+        "Conexión": "NPT"
+      },
+      "secondaryAttributes": {
+        "Función": "Flow Control",
+        "Presión de trabajo máxima": "5000 psi"
+      },
+      "priceProvider": 120.00,
+      "priceSale": 180.00,
+      "stock": 50,
+      "discount": 0,
+      "state": true
+    },
+    {
+      "sku": "8F1200M",
+      "primarySelection": {
+        "Material": "Inox 316",
+        "Diámetro": "3\"",
+        "Conexión": "NPT"
+      },
+      "secondaryAttributes": {
+        "Función": "Flow Control",
+        "Presión de trabajo máxima": "7500 psi"
+      },
+      "priceProvider": 150.00,
+      "priceSale": 220.00,
+      "stock": 30,
+      "discount": 5,
+      "state": true
+    }
+  ]
+}
+```
+
+**Response `200 OK`:**
+```json
+{
+  "success": true,
+  "mensaje": "2 variantes creadas",
+  "dataLista": [
+    {
+      "id": "66a1b2c3d4e5f6g7h8i9j0k1",
+      "productId": "65f1a2b3c4d5e6f7g8h9i0j2",
+      "sku": "8F1200S",
+      "primarySelection": { "Material": "Inox 316", "Diámetro": "2\"", "Conexión": "NPT" },
+      "secondaryAttributes": { "...": "..." },
+      "priceProvider": 120.00,
+      "priceSale": 180.00,
+      "stock": 50,
+      "discount": 0,
+      "state": true,
+      "createdAt": "2026-04-10T15:00:00Z",
+      "updatedAt": "2026-04-10T15:00:00Z"
+    },
+    {
+      "id": "66a1b2c3d4e5f6g7h8i9j0k2",
+      "productId": "65f1a2b3c4d5e6f7g8h9i0j2",
+      "sku": "8F1200M",
+      "primarySelection": { "Material": "Inox 316", "Diámetro": "3\"", "Conexión": "NPT" },
+      "secondaryAttributes": { "...": "..." },
+      "priceProvider": 150.00,
+      "priceSale": 220.00,
+      "stock": 30,
+      "discount": 5,
+      "state": true,
+      "createdAt": "2026-04-10T15:00:01Z",
+      "updatedAt": "2026-04-10T15:00:01Z"
+    }
+  ]
+}
+```
+
+**Errores posibles:**
+```json
+{ "success": false, "mensaje": "Producto padre no encontrado" }
+{ "success": false, "mensaje": "El producto no admite variantes (HasVariations = false)" }
+```
+
+---
+
+#### PUT /api/ProductVariants — Actualizar variante (parcial)
+
+**Request body — solo campos a modificar + `id` requerido:**
+```json
+{
+  "id": "66a1b2c3d4e5f6g7h8i9j0k1",
+  "priceSale": 165.00,
+  "stock": 45,
+  "discount": 5
+}
+```
+
+**Response:** `200 OK` con `data: ProductVariantDto` completo actualizado.
+
+#### DELETE /api/ProductVariants/{id}
+
+**Ejemplo:** `DELETE /api/ProductVariants/66a1b2c3d4e5f6g7h8i9j0k1`
+→ `200 OK` con `"mensaje": "Variante eliminada"`. `404` si no existe.
 
 ---
 
@@ -900,10 +1268,16 @@ this.http.put<Response>('http://localhost:5058/api/Products', formData).subscrib
 | | GET | `/api/provider-categories/provider/{providerId}` | `dataLista` |
 | | GET | `/api/provider-categories/category/{categoryId}` | `dataLista` |
 | **Products** | GET | `/api/Products?providerId&specialityId&pageNumber&pageSize` | `data` (paginado) |
-| | GET | `/api/Products/{id}` | `data` |
+| | GET | `/api/Products/{id}` | `data: { product, variants }` |
 | | POST | `/api/Products` (**multipart/form-data**) | `data` |
 | | PUT | `/api/Products` (**multipart/form-data**) | `data` |
-| | DELETE | `/api/Products/{id}` (elimina archivos de Cloudinary) | `data: null` |
+| | DELETE | `/api/Products/{id}` (cascade: variantes + Cloudinary) | `data: null` |
+| **ProductVariants** | GET | `/api/ProductVariants/by-product/{productId}?filters[key]=val` | `data` (paginado) |
+| | GET | `/api/ProductVariants/{id}` | `data` |
+| | POST | `/api/ProductVariants` (**application/json**) | `data` |
+| | POST | `/api/ProductVariants/bulk` (**application/json**) | `dataLista` |
+| | PUT | `/api/ProductVariants` (**application/json**) | `data` |
+| | DELETE | `/api/ProductVariants/{id}` | `data: null` |
 
 ---
 
@@ -927,13 +1301,29 @@ ProviderCategories ──── N:N ────── Category
                                       │ 1:N
                                       ▼
                                    Product ← también tiene ProviderId
+                                      │
+                                      │ 1:N (solo si hasVariations = true)
+                                      ▼
+                                ProductVariant
 ```
 
 - **Category 1 → N SubCategory**: Una categoría tiene muchas subcategorías
 - **SubCategory 1 → N Speciality**: Una subcategoría tiene muchas especialidades
 - **Speciality 1 → N Product**: Una especialidad tiene muchos productos
+- **Product 1 → N ProductVariant**: Un producto con variantes tiene muchas variantes
 - **Provider N ↔ N Category**: Relación muchos-a-muchos vía `ProviderCategories`
 - **Provider 1 → N Product**: Un proveedor tiene muchos productos
+
+### Almacenamiento
+
+| Entidad | Base de datos | Colección/Tabla |
+|---------|--------------|-----------------|
+| Category | PostgreSQL (Supabase) | `categories` |
+| SubCategory | PostgreSQL (Supabase) | `subcategories` |
+| Speciality | PostgreSQL (Supabase) | `specialities` |
+| ProviderCategory | PostgreSQL (Supabase) | `provider_categories` |
+| Product | MongoDB | `products` |
+| ProductVariant | MongoDB | `productVariants` |
 
 ---
 
@@ -947,7 +1337,8 @@ ProviderCategories ──── N:N ────── Category
 | `SubCategoryService` | CRUD de subcategorías + filtro por categoría |
 | `SpecialityService` | CRUD de especialidades + filtro por subcategoría + paginación |
 | `ProviderCategoryService` | Asignar/remover categorías a proveedores + consultas bidireccionales |
-| `ProductService` | CRUD de productos + listado paginado con filtros |
+| `ProductService` | CRUD de productos (simple y con variantes) + listado paginado |
+| `ProductVariantService` | CRUD de variantes + query con filtros dinámicos |
 
 ### Tipos de datos importantes
 
@@ -958,6 +1349,7 @@ ProviderCategories ──── N:N ────── Category
 | Speciality | `number` | PostgreSQL |
 | ProviderCategory | `number` | PostgreSQL |
 | Product | `string` (ObjectId) | MongoDB |
+| ProductVariant | `string` (ObjectId) | MongoDB |
 
 ### Dónde buscar los datos en la respuesta
 
@@ -965,34 +1357,8 @@ ProviderCategories ──── N:N ────── Category
 |--------------------------|-----------|------|
 | Un solo objeto | `response.data` | `T` |
 | Una lista | `response.dataLista` | `T[]` |
-| Lista paginada (Products y Speciality) | `response.data` | `PaginatedResult<T>` |
-
-### Ejemplo de servicio Angular para ProviderCategories
-
-```typescript
-@Injectable({ providedIn: 'root' })
-export class ProviderCategoryService {
-  private baseUrl = 'http://localhost:5058/api/provider-categories';
-
-  constructor(private http: HttpClient) {}
-
-  assignCategories(request: AssignCategoriesToProviderRequest): Observable<Response> {
-    return this.http.post<Response>(this.baseUrl, request);
-  }
-
-  removeCategory(providerId: number, categoryId: number): Observable<Response> {
-    return this.http.delete<Response>(`${this.baseUrl}/${providerId}/${categoryId}`);
-  }
-
-  getCategoriesByProvider(providerId: number): Observable<Response> {
-    return this.http.get<Response>(`${this.baseUrl}/provider/${providerId}`);
-  }
-
-  getProvidersByCategory(categoryId: number): Observable<Response> {
-    return this.http.get<Response>(`${this.baseUrl}/category/${categoryId}`);
-  }
-}
-```
+| Lista paginada (Products, Speciality, ProductVariants) | `response.data` | `PaginatedResult<T>` |
+| Producto con variantes (GET by ID) | `response.data.product` + `response.data.variants` | `ProductDto` + `ProductVariantDto[]` |
 
 ### Ejemplo de servicio Angular para Products (con FormData)
 
@@ -1019,7 +1385,6 @@ export class ProductService {
     return this.http.post<Response>(this.baseUrl, formData);
   }
 
-  // IMPORTANTE: NO pasar headers con Content-Type
   update(data: any, images?: File[], catalog?: File, video?: File): Observable<Response> {
     const formData = this.buildFormData(data, images, catalog, video);
     return this.http.put<Response>(this.baseUrl, formData);
@@ -1032,18 +1397,16 @@ export class ProductService {
   private buildFormData(data: any, images?: File[], catalog?: File, video?: File): FormData {
     const formData = new FormData();
 
-    // Campos escalares
     for (const key of Object.keys(data)) {
-      if (key === 'datasheet') {
-        formData.append('datasheetJson', JSON.stringify(data[key]));
-      } else if (key === 'variations') {
-        formData.append('variationsJson', JSON.stringify(data[key]));
+      if (key === 'attributes') {
+        formData.append('attributesJson', JSON.stringify(data[key]));
+      } else if (key === 'primaryAttributes') {
+        formData.append('primaryAttributesJson', JSON.stringify(data[key]));
       } else if (data[key] !== null && data[key] !== undefined) {
         formData.append(key, String(data[key]));
       }
     }
 
-    // Archivos
     if (images) {
       images.forEach(img => formData.append('productImages', img));
     }
@@ -1059,34 +1422,56 @@ export class ProductService {
 }
 ```
 
-### Ejemplo de consumo en componentes
+### Ejemplo de servicio Angular para ProductVariants (JSON)
 
 ```typescript
-// Listar categorías (dataLista)
-this.categoryService.getAll().subscribe(response => {
-  if (response.success) {
-    this.categories = response.dataLista as CategoryDto[];
-  }
-});
+@Injectable({ providedIn: 'root' })
+export class ProductVariantService {
+  private baseUrl = 'http://localhost:5058/api/ProductVariants';
 
-// Obtener un producto por ID (data)
-this.productService.getById(id).subscribe(response => {
-  if (response.success) {
-    this.product = response.data as ProductDto;
-  }
-});
+  constructor(private http: HttpClient) {}
 
-// Listar productos paginados (data con PaginatedResult)
-this.productService.getProducts(providerId, specialityId, page, size).subscribe(response => {
-  if (response.success) {
-    const paginated = response.data as PaginatedResult<ProductDto>;
-    this.products = paginated.items;
-    this.totalPages = paginated.totalPages;
+  // Obtener variantes con filtros dinámicos
+  getByProductId(
+    productId: string,
+    pageNumber: number = 1,
+    pageSize: number = 50,
+    filters?: Record<string, string>
+  ): Observable<Response> {
+    let params = `?pageNumber=${pageNumber}&pageSize=${pageSize}`;
+    if (filters) {
+      for (const [key, value] of Object.entries(filters)) {
+        params += `&filters[${encodeURIComponent(key)}]=${encodeURIComponent(value)}`;
+      }
+    }
+    return this.http.get<Response>(`${this.baseUrl}/by-product/${productId}${params}`);
   }
-});
 
-// Crear producto con archivos (FormData)
-const productData = {
+  getById(id: string): Observable<Response> {
+    return this.http.get<Response>(`${this.baseUrl}/${id}`);
+  }
+
+  create(variant: CreateProductVariantRequest): Observable<Response> {
+    return this.http.post<Response>(this.baseUrl, variant);
+  }
+
+  update(variant: UpdateProductVariantRequest): Observable<Response> {
+    return this.http.put<Response>(this.baseUrl, variant);
+  }
+
+  delete(id: string): Observable<Response> {
+    return this.http.delete<Response>(`${this.baseUrl}/${id}`);
+  }
+}
+```
+
+### Ejemplo de flujo completo en componentes
+
+```typescript
+// ═══════════════════════════════════════════════════════════
+// CREAR PRODUCTO SIMPLE
+// ═══════════════════════════════════════════════════════════
+const simpleProduct = {
   providerId: 1,
   specialityId: 1,
   name: 'Laptop Gaming ASUS ROG',
@@ -1094,79 +1479,152 @@ const productData = {
   brand: 'ASUS',
   description: 'Laptop gaming de alta gama',
   countryOrigin: 'Taiwan',
+  hasVariations: false,
   priceProvider: 1500,
   priceSale: 1899.99,
   stock: 50,
-  datasheet: { processor: 'i9-13900H', ram: '32GB DDR5' },
-  variations: [{ color: 'Negro', storage: '1TB' }],
+  discount: 10,
+  attributes: { processor: 'i9-13900H', ram: '32GB DDR5', storage: '1TB SSD' },
   warrantyTime: 24,
   hasWarranty: true,
-  discount: 10,
   isNew: true,
   isOfferUnique: false,
   showPrice: true,
   state: true
 };
 
-// imageFiles viene de un <input type="file" multiple>
-const imageFiles: File[] = Array.from(fileInput.files);
-const catalogFile: File = catalogInput.files[0];
-const videoFile: File = videoInput.files[0];
-
-this.productService.create(productData, imageFiles, catalogFile, videoFile)
+this.productService.create(simpleProduct, imageFiles, catalogFile)
   .subscribe(response => {
     if (response.success) {
       const product = response.data as ProductDto;
-      console.log('URLs de imágenes:', product.productImg);  // URLs de Cloudinary
-      console.log('URL del catálogo:', product.catalog);      // URL de Cloudinary
+      console.log('Producto simple creado:', product.id);
     }
   });
 
-// Actualizar solo precio (sin tocar archivos)
-this.productService.update({ id: '65f1a2b3...', priceSale: 1799.99 })
-  .subscribe(...);
+// ═══════════════════════════════════════════════════════════
+// CREAR PRODUCTO CON VARIANTES (2 pasos)
+// ═══════════════════════════════════════════════════════════
 
-// Actualizar reemplazando imágenes
-const newImages: File[] = [newFile1, newFile2];
-this.productService.update({ id: '65f1a2b3...' }, newImages)
-  .subscribe(...);
-
-// Asignar categorías a proveedor (dataLista en respuesta)
-const request: AssignCategoriesToProviderRequest = {
+// Paso 1: Crear el producto padre
+const variantProduct = {
   providerId: 1,
-  assignments: [
-    { categoryId: 1, isPrimary: true },
-    { categoryId: 3 }
-  ]
+  specialityId: 3,
+  name: 'Válvulas de control de flujo - Serie F',
+  brand: 'Colorflow',
+  description: 'Válvulas hidráulicas de control de flujo en línea',
+  countryOrigin: 'USA',
+  hasVariations: true,
+  primaryAttributes: [
+    { name: 'Material', options: ['Inox 316', 'Bronce', 'Hierro fund.'] },
+    { name: 'Diámetro', options: ['1"', '2"', '4"', '6"'] },
+    { name: 'Conexión', options: ['NPT', 'SAE', 'BSPT'] }
+  ],
+  warrantyTime: 12,
+  hasWarranty: true,
+  isNew: false,
+  isOfferUnique: false,
+  showPrice: true,
+  state: true
 };
-this.providerCategoryService.assignCategories(request).subscribe(response => {
+
+this.productService.create(variantProduct, valveImages, catalogPdf)
+  .subscribe(response => {
+    if (response.success) {
+      const product = response.data as ProductDto;
+      const productId = product.id;  // Guardar para crear variantes
+
+      // Paso 2: Crear variantes asociadas
+      const variant1: CreateProductVariantRequest = {
+        productId: productId,
+        sku: '8F1200S',
+        primarySelection: { Material: 'Inox 316', Diámetro: '2"', Conexión: 'NPT' },
+        secondaryAttributes: {
+          Función: 'Flow Control',
+          'Presión máxima': '5000 psi',
+          'Caudal máximo': '25 gal/min',
+          'Temp. máxima': '+250 °F'
+        },
+        priceProvider: 120,
+        priceSale: 180,
+        stock: 50,
+        discount: 0,
+        state: true
+      };
+
+      this.variantService.create(variant1).subscribe(...);
+    }
+  });
+
+// ═══════════════════════════════════════════════════════════
+// CONSULTAR PRODUCTO Y MOSTRAR VARIANTES
+// ═══════════════════════════════════════════════════════════
+this.productService.getById(productId).subscribe(response => {
   if (response.success) {
-    this.providerCategories = response.dataLista as ProviderCategoryDto[];
+    const { product, variants } = response.data;
+
+    if (product.hasVariations) {
+      // Mostrar filtros desde primaryAttributes
+      this.filters = product.primaryAttributes;  // [{name, options}]
+      this.variants = variants;                  // ProductVariantDto[]
+    } else {
+      // Producto simple — mostrar precio/stock directo
+      this.price = product.priceSale;
+      this.stock = product.stock;
+      this.specs = product.attributes;
+    }
   }
 });
+
+// ═══════════════════════════════════════════════════════════
+// FILTRAR VARIANTES DINÁMICAMENTE (usuario selecciona filtros)
+// ═══════════════════════════════════════════════════════════
+onFilterChange(selectedFilters: Record<string, string>) {
+  // selectedFilters = { "Material": "Inox 316", "Diámetro": "2\"" }
+  this.variantService.getByProductId(this.productId, 1, 50, selectedFilters)
+    .subscribe(response => {
+      if (response.success) {
+        const paginated = response.data as PaginatedResult<ProductVariantDto>;
+        this.filteredVariants = paginated.items;
+      }
+    });
+}
 ```
 
 ### Reglas de negocio que debe conocer el frontend
 
 1. **Fechas**: Todas vienen en UTC (ISO 8601). Convertir a local para mostrar al usuario.
 2. **`state`**: En todas las entidades, `true` = activo, `false` = inactivo.
-3. **`isPrimary` en ProviderCategories**: Solo UNA categoría puede ser primaria por proveedor. Si el usuario marca una nueva, enviarla con `isPrimary: true` y el backend desmarca la anterior.
-4. **Products paginación**: `pageSize` máximo 50. El backend valida que la `specialityId` exista.
+3. **`isPrimary` en ProviderCategories**: Solo UNA categoría puede ser primaria por proveedor.
+4. **Products paginación**: `pageSize` máximo 50. ProductVariants máximo 200.
 5. **`providerId`**: Corresponde al campo `Id` de la tabla `Providers` en el backend de Users. NO es el `UserId`.
-6. **Actualización parcial de productos**: Solo enviar los campos modificados + el `id` en el FormData.
-7. **`datasheet` y `variations`**: Son campos dinámicos. Se envían como JSON strings (`datasheetJson`, `variationsJson`) en el FormData. Usar `JSON.stringify()` para serializar.
-8. **Cascada de eliminación**: Eliminar una categoría elimina sus subcategorías y las relaciones en ProviderCategories. Eliminar una subcategoría elimina sus especialidades.
-9. **Jerarquía de navegación**: Category → SubCategory → Speciality → Product. Para llegar a productos, el usuario navega por los 3 niveles de clasificación.
-10. **Archivos de productos (Cloudinary)**:
-    - POST/PUT de Products usan `multipart/form-data` — **NO** `application/json`.
-    - **NO** setear `Content-Type` en los headers del HttpClient para Products. El browser lo genera automáticamente.
-    - Las imágenes, catálogo y video se suben al backend como `File` objects en el `FormData`.
-    - El backend sube los archivos a Cloudinary y guarda las URLs en MongoDB.
-    - En PUT, enviar archivos **reemplaza** los anteriores (los viejos se eliminan de Cloudinary).
-    - En DELETE, el backend elimina automáticamente todos los archivos de Cloudinary.
-    - Las URLs de archivos en la respuesta (`productImg`, `catalog`, `productVideo`) son URLs públicas de Cloudinary que se pueden usar directamente en `<img>`, `<a>`, `<video>`.
+6. **Actualización parcial**: Solo enviar campos modificados + `id` (tanto en Products como ProductVariants).
+7. **`hasVariations` define el tipo de producto**:
+   - `false` → Producto simple. Tiene `priceProvider`, `priceSale`, `stock`, `discount`, `attributes`. No tiene variantes.
+   - `true` → Producto familia. Tiene `primaryAttributes`. NO tiene precio/stock propio. Las variantes tienen el precio/stock.
+8. **Cascada de eliminación**:
+   - Eliminar un producto con variantes → elimina automáticamente TODAS sus variantes.
+   - Eliminar una categoría → elimina subcategorías y relaciones en ProviderCategories.
+9. **Jerarquía de navegación**: Category → SubCategory → Speciality → Product → (ProductVariant).
+10. **Flujo para producto con variantes**:
+    - Primero crear el producto padre con `hasVariations: true` y `primaryAttributes`.
+    - Luego crear cada variante via `POST /api/ProductVariants` referenciando el `productId`.
+    - En el frontend, mostrar `primaryAttributes` como filtros/selectores.
+    - Cuando el usuario selecciona una combinación, consultar variantes filtradas.
+    - Mostrar `secondaryAttributes` como tabla de especificaciones de la variante seleccionada.
+11. **Archivos de productos (Cloudinary)**:
+    - Solo el producto padre tiene imágenes/video/catálogo. Las variantes NO tienen archivos propios.
+    - POST/PUT de Products usan `multipart/form-data`. ProductVariants usan `application/json`.
+    - En PUT Products, enviar archivos **reemplaza** los anteriores.
+    - En DELETE, se eliminan automáticamente todos los archivos de Cloudinary + variantes.
+12. **`attributes` vs `primaryAttributes`/`secondaryAttributes`**:
+    - `attributes` (producto simple): Specs técnicos genéricos del producto. Se muestran en una tabla de "Ficha técnica".
+    - `primaryAttributes` (producto padre con variantes): Definición de FILTROS. Cada atributo tiene `name` y `options[]`.
+    - `secondaryAttributes` (en cada variante): Specs técnicos específicos de ESA variante. Se muestran al seleccionar la variante.
+13. **Referencia para otros servicios (Orders, Reviews)**:
+    - Producto simple → referenciar con `productId`.
+    - Producto con variantes → referenciar con `productId` + `productVariantId` (el SKU y precio vienen de la variante).
 
 ---
 
-**Versión:** 4.0  
-**Última actualización:** Abril 2026
+**Versión:** 5.0  
+**Última actualización:** Junio 2026

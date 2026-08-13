@@ -1,4 +1,4 @@
-import { Component, OnInit, OnDestroy } from '@angular/core';
+import { Component, ChangeDetectorRef, OnInit, OnDestroy } from '@angular/core';
 import { Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { RoleService, UserRole } from '../../../core/services/role.service';
@@ -55,6 +55,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
   ];
 
   private providerMenu: MenuItem[] = [
+    { label: 'Dashboard', icon: 'dashboard', route: '/provider/dashboard' },
     { label: 'Mis Productos', icon: 'inventory_2', route: '/provider/products' },
     {
       label: 'Órdenes',
@@ -71,13 +72,21 @@ export class SidebarComponent implements OnInit, OnDestroy {
         // { label: 'Pendiente de Aprobación', icon: 'pending_actions', route: '/provider/pending-reviews' },
         { label: 'Comentarios', icon: 'forum', route: '/provider/reviews' }
       ]
+    },
+    {
+      label: 'Ajustes',
+      icon: 'settings',
+      children: [
+        { label: 'Mi Perfil', icon: 'person', route: '/provider/settings/profile' }
+      ]
     }
   ];
 
   constructor(
     private router: Router,
     public roleService: RoleService,
-    private clerkService: ClerkService
+    private clerkService: ClerkService,
+    private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
@@ -88,6 +97,7 @@ export class SidebarComponent implements OnInit, OnDestroy {
       this.roleName = session.role === 'admin' ? 'Administrador' : 'Proveedor';
       this.menuItems = session.role === 'admin' ? this.adminMenu : this.providerMenu;
       this.expandedMenu = null;
+      this.cdr.detectChanges();
     });
   }
 

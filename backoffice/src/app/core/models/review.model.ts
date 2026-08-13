@@ -1,6 +1,7 @@
 export interface ReviewDto {
   id: string;
   productId: string;
+  productVariantId: string | null;
   clientId: number;
   providerId: number;
   subject: string;

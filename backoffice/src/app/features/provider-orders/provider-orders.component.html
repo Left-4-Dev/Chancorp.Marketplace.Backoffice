@@ -81,7 +81,7 @@
       </div>
 
       <div *ngIf="products.length > 0" class="products-grid">
-        <div class="product-card" *ngFor="let p of products" [class.added]="isProductAdded(p.id)">
+        <div class="product-card" *ngFor="let p of products" [class.added]="isProductAdded(p)">
           <div class="product-card-img">
             <img *ngIf="p.productImg && p.productImg.length > 0" [src]="p.productImg[0]" alt="" />
             <span *ngIf="!p.productImg || p.productImg.length === 0" class="material-icons">image</span>
@@ -89,16 +89,17 @@
           <div class="product-card-info">
             <h5>{{ p.name }}</h5>
             <p class="product-meta">{{ p.brand }} · {{ p.sku }}</p>
-            <p class="product-price">S/ {{ p.priceSale | number:'1.2-2' }}</p>
-            <p class="product-stock">Stock: {{ p.stock }}</p>
+            <p class="product-price" *ngIf="!p.hasVariations">S/ {{ p.priceSale | number:'1.2-2' }}</p>
+            <p class="product-price" *ngIf="p.hasVariations"><span class="variant-tag">Con variantes</span></p>
+            <p class="product-stock" *ngIf="!p.hasVariations">Stock: {{ p.stock }}</p>
           </div>
           <button class="btn btn-sm"
-                  [class.btn-primary]="!isProductAdded(p.id)"
-                  [class.btn-disabled]="isProductAdded(p.id)"
-                  [disabled]="isProductAdded(p.id)"
+                  [class.btn-primary]="!isProductAdded(p)"
+                  [class.btn-disabled]="isProductAdded(p)"
+                  [disabled]="isProductAdded(p)"
                   (click)="openAddItemModal(p)">
-            <span class="material-icons">{{ isProductAdded(p.id) ? 'check' : 'add_shopping_cart' }}</span>
-            {{ isProductAdded(p.id) ? 'Agregado' : 'Agregar' }}
+            <span class="material-icons">{{ isProductAdded(p) ? 'check' : 'add_shopping_cart' }}</span>
+            {{ isProductAdded(p) ? 'Agregar' : (p.hasVariations ? 'Elegir Variante' : 'Agregar') }}
           </button>
         </div>
       </div>
@@ -149,7 +150,8 @@
               <td>
                 <div class="item-product">
                   <strong>{{ item.product.name }}</strong>
-                  <small>{{ item.product.sku }}</small>
+                  <small>{{ item.variantSku || item.product.sku }}</small>
+                  <small class="variant-tag" *ngIf="item.productVariantId">Variante</small>
                 </div>
               </td>
               <td>
@@ -314,7 +316,7 @@
                 <tr *ngFor="let item of orderItems">
                   <td>
                     <strong>{{ item.product.name }}</strong><br>
-                    <small>{{ item.product.brand }} · {{ item.product.sku }}</small>
+                    <small>{{ item.product.brand }} · {{ item.variantSku || item.product.sku }}</small>
                   </td>
                   <td>
                     <span *ngIf="item.paymentType === 'direct'">Directo</span>
@@ -368,6 +370,75 @@
   </div>
 </div>
 
+<!-- ==================== MODAL SELECTOR DE VARIANTE ==================== -->
+<div class="modal-overlay" *ngIf="showVariantSelector" (click)="closeVariantSelector()">
+  <div class="modal-content modal-lg" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Seleccionar Variante — {{ selectedProduct?.name }}</h3>
+      <button class="close-btn" (click)="closeVariantSelector()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Filtros por atributos primarios -->
+      <div class="variant-filters" *ngIf="selectedProduct?.primaryAttributes">
+        <div class="filter-row">
+          <div class="filter-item" *ngFor="let attr of selectedProduct!.primaryAttributes">
+            <label>{{ attr.name }}</label>
+            <select [(ngModel)]="variantFilters[attr.name]" (ngModelChange)="onVariantFilterChange()">
+              <option value="">Todos</option>
+              <option *ngFor="let opt of attr.options" [value]="opt">{{ opt }}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lista de variantes -->
+      <div class="variant-list" *ngIf="!loadingVariants && productVariants.length > 0">
+        <table class="data-table compact">
+          <thead>
+            <tr>
+              <th>SKU</th>
+              <th>Combinación</th>
+              <th>Precio Venta</th>
+              <th>Stock</th>
+              <th>Acción</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let v of productVariants">
+              <td><strong>{{ v.sku }}</strong></td>
+              <td>
+                <span *ngFor="let key of getVariantKeys(v.primarySelection)" class="variant-chip">
+                  {{ key }}: {{ v.primarySelection[key] }}
+                </span>
+              </td>
+              <td>${{ v.priceSale | number:'1.2-2' }}</td>
+              <td>{{ v.stock }}</td>
+              <td>
+                <button class="btn-select-variant" (click)="selectVariant(v)" [disabled]="v.stock === 0">
+                  <span class="material-icons">add_shopping_cart</span>
+                  Seleccionar
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="empty-state" *ngIf="!loadingVariants && productVariants.length === 0">
+        <span class="material-icons">search_off</span>
+        <p>No se encontraron variantes con los filtros seleccionados</p>
+      </div>
+
+      <div class="loading-state" *ngIf="loadingVariants">
+        <div class="spinner"></div>
+        <span>Cargando variantes...</span>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- ==================== MODAL AGREGAR ITEM ==================== -->
 <div class="modal-overlay" *ngIf="showItemModal" (click)="closeItemModal()">
   <div class="modal-content" (click)="$event.stopPropagation()">
@@ -387,7 +458,12 @@
         </div>
         <div>
           <h4>{{ selectedProduct.name }}</h4>
-          <p>{{ selectedProduct.brand }} · SKU: {{ selectedProduct.sku }}</p>
+          <p>{{ selectedProduct.brand }} · SKU: {{ selectedVariant?.sku || selectedProduct.sku }}</p>
+          <p *ngIf="selectedVariant" class="variant-info-badge">
+            <span *ngFor="let key of getVariantKeys(selectedVariant.primarySelection)" class="variant-chip">
+              {{ key }}: {{ selectedVariant.primarySelection[key] }}
+            </span>
+          </p>
           <p class="product-base-price">Precio base: <strong>S/ {{ selectedProduct.priceSale | number:'1.2-2' }}</strong></p>
         </div>
       </div>

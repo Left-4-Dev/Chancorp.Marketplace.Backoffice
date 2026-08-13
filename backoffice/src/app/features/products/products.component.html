@@ -104,12 +104,11 @@
           <tr>
             <th>Imagen</th>
             <th>Nombre</th>
+            <th>Tipo</th>
             <th>SKU</th>
             <th>Marca</th>
-            <th>Especialidad</th>
             <th>Precio Venta</th>
             <th>Stock</th>
-            <th>Descuento</th>
             <th>Estado</th>
             <th>Acciones</th>
           </tr>
@@ -133,25 +132,29 @@
                 <span class="product-id">{{ product.id }}</span>
               </div>
             </td>
-            <td><span class="sku-badge">{{ product.sku }}</span></td>
-            <td>{{ product.brand }}</td>
             <td>
-              <span class="subcategory-badge">{{ getSpecialityName(product.specialityId) }}</span>
-            </td>
-            <td>
-              <div class="price-cell">
-                <span class="price">${{ product.priceSale | number:'1.2-2' }}</span>
-                <span class="price-provider">${{ product.priceProvider | number:'1.2-2' }}</span>
-              </div>
-            </td>
-            <td>
-              <span class="stock-badge" [class.low]="product.stock < 10" [class.out]="product.stock === 0">
-                {{ product.stock }}
+              <span class="type-badge" [class.simple]="!product.hasVariations" [class.variants]="product.hasVariations">
+                {{ product.hasVariations ? 'Con Variantes' : 'Simple' }}
               </span>
             </td>
             <td>
-              <span class="discount-badge" *ngIf="product.discount > 0">-{{ product.discount }}%</span>
-              <span class="no-discount" *ngIf="product.discount === 0">—</span>
+              <span class="sku-badge" *ngIf="!product.hasVariations">{{ product.sku }}</span>
+              <span class="sku-badge muted" *ngIf="product.hasVariations">—</span>
+            </td>
+            <td>{{ product.brand }}</td>
+            <td>
+              <div class="price-cell" *ngIf="!product.hasVariations">
+                <span class="price">${{ product.priceSale | number:'1.2-2' }}</span>
+                <span class="price-provider">${{ product.priceProvider | number:'1.2-2' }}</span>
+              </div>
+              <span class="muted-text" *ngIf="product.hasVariations">Ver variantes</span>
+            </td>
+            <td>
+              <span class="stock-badge" *ngIf="!product.hasVariations"
+                    [class.low]="product.stock! < 10" [class.out]="product.stock === 0">
+                {{ product.stock }}
+              </span>
+              <span class="muted-text" *ngIf="product.hasVariations">—</span>
             </td>
             <td>
               <span class="status-badge" [class.active]="product.state" [class.inactive]="!product.state">
@@ -170,7 +173,7 @@
             </td>
           </tr>
           <tr *ngIf="products.length === 0 && !loading">
-            <td colspan="10" class="empty-state">
+            <td colspan="9" class="empty-state">
               <span class="material-icons">inventory_2</span>
               <p>No se encontraron productos con los filtros seleccionados</p>
             </td>
@@ -273,10 +276,6 @@
             <input type="text" [(ngModel)]="formData.name" placeholder="Nombre del producto">
           </div>
           <div class="form-group">
-            <label>SKU *</label>
-            <input type="text" [(ngModel)]="formData.sku" placeholder="Código SKU">
-          </div>
-          <div class="form-group">
             <label>Marca *</label>
             <input type="text" [(ngModel)]="formData.brand" placeholder="Marca del producto">
           </div>
@@ -291,12 +290,45 @@
         </div>
       </div>
 
+      <!-- Tipo de producto -->
       <div class="form-section">
+        <h4 class="section-title">
+          <span class="material-icons">settings</span>
+          Tipo de Producto
+        </h4>
+        <div class="product-type-selector">
+          <label class="type-option" [class.selected]="!formData.hasVariations">
+            <input type="radio" [value]="false" [(ngModel)]="formData.hasVariations"
+                   [disabled]="modalMode === 'edit'" name="hasVariations">
+            <span class="type-icon material-icons">inventory</span>
+            <span class="type-label">Producto Simple</span>
+            <span class="type-desc">Producto único con precio, stock y atributos propios</span>
+          </label>
+          <label class="type-option" [class.selected]="formData.hasVariations">
+            <input type="radio" [value]="true" [(ngModel)]="formData.hasVariations"
+                   [disabled]="modalMode === 'edit'" name="hasVariations">
+            <span class="type-icon material-icons">view_list</span>
+            <span class="type-label">Producto con Variantes</span>
+            <span class="type-desc">Producto familia con múltiples variantes (cada una con su SKU/precio/stock)</span>
+          </label>
+        </div>
+        <p class="section-hint" *ngIf="modalMode === 'edit'">
+          <span class="material-icons">info</span>
+          El tipo de producto no se puede cambiar después de creado.
+        </p>
+      </div>
+
+      <!-- Precios y Stock (solo producto simple) -->
+      <div class="form-section" *ngIf="!formData.hasVariations">
         <h4 class="section-title">
           <span class="material-icons">attach_money</span>
           Precios y Stock
         </h4>
         <div class="form-grid">
+          <div class="form-group">
+            <label>SKU *</label>
+            <input type="text" [(ngModel)]="formData.sku" placeholder="Código SKU">
+          </div>
           <div class="form-group">
             <label>Precio Proveedor *</label>
             <input type="number" [(ngModel)]="formData.priceProvider" placeholder="0.00" min="0" step="0.01">
@@ -313,6 +345,168 @@
             <label>Descuento (%)</label>
             <input type="number" [(ngModel)]="formData.discount" placeholder="0" min="0" max="100" step="0.1">
           </div>
+        </div>
+      </div>
+
+      <!-- Atributos / Especificaciones (solo producto simple) -->
+      <div class="form-section" *ngIf="!formData.hasVariations">
+        <h4 class="section-title">
+          <span class="material-icons">description</span>
+          Atributos / Especificaciones
+        </h4>
+        <p class="section-hint">Agrega las especificaciones técnicas del producto como pares clave-valor.</p>
+
+        <div class="kv-table" *ngIf="datasheetEntries.length > 0">
+          <div class="kv-header">
+            <span class="kv-col-key">Característica</span>
+            <span class="kv-col-value">Valor</span>
+            <span class="kv-col-action"></span>
+          </div>
+          <div class="kv-row" *ngFor="let entry of datasheetEntries; let i = index">
+            <input type="text" class="kv-input" [(ngModel)]="entry.key" placeholder="Ej: Procesador, RAM, Pantalla...">
+            <input type="text" class="kv-input" [(ngModel)]="entry.value" placeholder="Ej: Intel i9, 32GB DDR5">
+            <button class="btn-icon-sm danger" (click)="removeDatasheetEntry(i)" title="Eliminar">
+              <span class="material-icons">close</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="empty-kv" *ngIf="datasheetEntries.length === 0">
+          <span class="material-icons">info_outline</span>
+          <span>No hay especificaciones. Agrega una con el botón de abajo.</span>
+        </div>
+
+        <button class="btn-add-row" (click)="addDatasheetEntry()">
+          <span class="material-icons">add</span>
+          Agregar Especificación
+        </button>
+      </div>
+
+      <!-- Atributos Primarios / Filtros (solo producto con variantes) -->
+      <div class="form-section" *ngIf="formData.hasVariations">
+        <h4 class="section-title">
+          <span class="material-icons">filter_alt</span>
+          Atributos Primarios (Filtros)
+        </h4>
+        <p class="section-hint">Define los filtros que tendrán las variantes. Ej: Material, Diámetro, Conexión. Cada filtro tiene opciones que los clientes usarán para seleccionar una variante.</p>
+
+        <div class="primary-attributes-list" *ngIf="primaryAttributes.length > 0">
+          <div class="primary-attr-card" *ngFor="let attr of primaryAttributes; let i = index">
+            <div class="attr-header">
+              <input type="text" class="attr-name-input" [(ngModel)]="attr.name"
+                     placeholder="Nombre del filtro (ej: Material)">
+              <button class="btn-icon-sm danger" (click)="removePrimaryAttribute(i)" title="Eliminar filtro">
+                <span class="material-icons">delete</span>
+              </button>
+            </div>
+            <div class="attr-options">
+              <div class="option-chips">
+                <span class="option-chip" *ngFor="let opt of attr.options; let oi = index">
+                  <input type="text" class="option-input" [(ngModel)]="attr.options[oi]"
+                         placeholder="Opción">
+                  <button class="chip-remove-sm" (click)="removePrimaryAttributeOption(i, oi)">
+                    <span class="material-icons">close</span>
+                  </button>
+                </span>
+              </div>
+              <button class="btn-add-option" (click)="addPrimaryAttributeOption(i)">
+                <span class="material-icons">add</span> Opción
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="empty-kv" *ngIf="primaryAttributes.length === 0">
+          <span class="material-icons">info_outline</span>
+          <span>No hay filtros definidos. Agrega al menos uno para poder crear variantes.</span>
+        </div>
+
+        <button class="btn-add-row" (click)="addPrimaryAttribute()">
+          <span class="material-icons">add</span>
+          Agregar Filtro
+        </button>
+      </div>
+
+      <!-- Gestión de Variantes (solo en edición, producto con variantes) -->
+      <div class="form-section" *ngIf="formData.hasVariations && modalMode === 'edit'">
+        <h4 class="section-title">
+          <span class="material-icons">view_list</span>
+          Variantes del Producto
+          <span class="variant-count" *ngIf="variants.length > 0">({{ variantsTotalCount }})</span>
+        </h4>
+
+        <div class="variants-toolbar">
+          <button class="btn-primary btn-sm" (click)="openVariantModal('create')">
+            <span class="material-icons">add</span>
+            Nueva Variante
+          </button>
+        </div>
+
+        <div class="variants-table-wrapper" *ngIf="variants.length > 0">
+          <table class="data-table compact">
+            <thead>
+              <tr>
+                <th>SKU</th>
+                <th>Combinación</th>
+                <th>Precio Venta</th>
+                <th>Stock</th>
+                <th>Estado</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let variant of variants">
+                <td><span class="sku-badge">{{ variant.sku }}</span></td>
+                <td>
+                  <div class="variant-selection">
+                    <span class="selection-chip" *ngFor="let key of getObjectKeys(variant.primarySelection)">
+                      {{ key }}: {{ variant.primarySelection[key] }}
+                    </span>
+                  </div>
+                </td>
+                <td>${{ variant.priceSale | number:'1.2-2' }}</td>
+                <td>
+                  <span class="stock-badge" [class.low]="variant.stock < 10" [class.out]="variant.stock === 0">
+                    {{ variant.stock }}
+                  </span>
+                </td>
+                <td>
+                  <span class="status-badge" [class.active]="variant.state" [class.inactive]="!variant.state">
+                    {{ variant.state ? 'Activo' : 'Inactivo' }}
+                  </span>
+                </td>
+                <td>
+                  <div class="action-buttons">
+                    <button class="btn-action edit" (click)="openVariantModal('edit', variant)" title="Editar">
+                      <span class="material-icons">edit</span>
+                    </button>
+                    <button class="btn-action delete" (click)="confirmDeleteVariant(variant)" title="Eliminar">
+                      <span class="material-icons">delete</span>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="variants-pagination" *ngIf="variantsTotalPages > 1">
+          <button class="page-btn" [disabled]="variantsCurrentPage === 1" (click)="loadVariants(variantsCurrentPage - 1)">
+            <span class="material-icons">chevron_left</span>
+          </button>
+          <span class="pagination-info">{{ variantsCurrentPage }} / {{ variantsTotalPages }}</span>
+          <button class="page-btn" [disabled]="variantsCurrentPage === variantsTotalPages" (click)="loadVariants(variantsCurrentPage + 1)">
+            <span class="material-icons">chevron_right</span>
+          </button>
+        </div>
+
+        <div class="empty-kv" *ngIf="variants.length === 0 && !loadingVariants">
+          <span class="material-icons">info_outline</span>
+          <span>No hay variantes creadas aún. Usa "Nueva Variante" para agregar.</span>
+        </div>
+        <div class="loading-inline" *ngIf="loadingVariants">
+          <div class="spinner-small"></div>
+          <span>Cargando variantes...</span>
         </div>
       </div>
 
@@ -509,10 +703,143 @@
         <strong>{{ productToDelete?.name }}</strong>?
         Esta acción no se puede deshacer.
       </p>
+      <p class="delete-warning" *ngIf="productToDelete?.hasVariations">
+        <span class="material-icons">warning</span>
+        Este producto tiene variantes. Se eliminarán todas las variantes asociadas.
+      </p>
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" (click)="cancelDelete()">Cancelar</button>
       <button class="btn-danger" (click)="deleteProduct()">Eliminar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Crear/Editar Variante -->
+<div class="modal-overlay" *ngIf="showVariantModal" (click)="closeVariantModal()">
+  <div class="modal modal-md" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>{{ variantModalMode === 'create' ? 'Nueva Variante' : 'Editar Variante' }}</h3>
+      <button class="close-btn" (click)="closeVariantModal()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <!-- Selección Primaria -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <span class="material-icons">filter_alt</span>
+          Combinación de Filtros
+        </h4>
+        <p class="section-hint">Selecciona los valores para cada atributo primario definido en el producto.</p>
+        <div class="form-grid">
+          <div class="form-group" *ngFor="let attr of primaryAttributes">
+            <label>{{ attr.name }} *</label>
+            <select [(ngModel)]="variantFormData.primarySelection[attr.name]">
+              <option value="">-- Seleccione --</option>
+              <option *ngFor="let opt of attr.options" [value]="opt">{{ opt }}</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Precio y Stock de variante -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <span class="material-icons">attach_money</span>
+          Precio y Stock
+        </h4>
+        <div class="form-grid">
+          <div class="form-group">
+            <label>SKU *</label>
+            <input type="text" [(ngModel)]="variantFormData.sku" placeholder="Código SKU de la variante">
+          </div>
+          <div class="form-group">
+            <label>Precio Proveedor *</label>
+            <input type="number" [(ngModel)]="variantFormData.priceProvider" placeholder="0.00" min="0" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Precio Venta *</label>
+            <input type="number" [(ngModel)]="variantFormData.priceSale" placeholder="0.00" min="0" step="0.01">
+          </div>
+          <div class="form-group">
+            <label>Stock *</label>
+            <input type="number" [(ngModel)]="variantFormData.stock" placeholder="0" min="0">
+          </div>
+          <div class="form-group">
+            <label>Descuento (%)</label>
+            <input type="number" [(ngModel)]="variantFormData.discount" placeholder="0" min="0" max="100" step="0.1">
+          </div>
+          <div class="form-group checkbox-row">
+            <label class="checkbox-label">
+              <input type="checkbox" [(ngModel)]="variantFormData.state">
+              <span>Activo</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <!-- Atributos Secundarios (specs) -->
+      <div class="form-section">
+        <h4 class="section-title">
+          <span class="material-icons">description</span>
+          Especificaciones Técnicas (Atributos Secundarios)
+        </h4>
+        <p class="section-hint">Características técnicas específicas de esta variante.</p>
+
+        <div class="kv-table" *ngIf="variantSecondaryEntries.length > 0">
+          <div class="kv-header">
+            <span class="kv-col-key">Característica</span>
+            <span class="kv-col-value">Valor</span>
+            <span class="kv-col-action"></span>
+          </div>
+          <div class="kv-row" *ngFor="let entry of variantSecondaryEntries; let i = index">
+            <input type="text" class="kv-input" [(ngModel)]="entry.key" placeholder="Ej: Presión máxima">
+            <input type="text" class="kv-input" [(ngModel)]="entry.value" placeholder="Ej: 5000 psi">
+            <button class="btn-icon-sm danger" (click)="removeVariantSecondaryEntry(i)" title="Eliminar">
+              <span class="material-icons">close</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="empty-kv" *ngIf="variantSecondaryEntries.length === 0">
+          <span class="material-icons">info_outline</span>
+          <span>Sin especificaciones. Agrega con el botón de abajo.</span>
+        </div>
+
+        <button class="btn-add-row" (click)="addVariantSecondaryEntry()">
+          <span class="material-icons">add</span>
+          Agregar Especificación
+        </button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="closeVariantModal()" [disabled]="savingVariant">Cancelar</button>
+      <button class="btn-primary" (click)="saveVariant()" [disabled]="savingVariant">
+        <span *ngIf="savingVariant" class="spinner-small"></span>
+        {{ savingVariant ? 'Guardando...' : (variantModalMode === 'create' ? 'Crear Variante' : 'Guardar Cambios') }}
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmar Eliminación de Variante -->
+<div class="modal-overlay" *ngIf="showDeleteVariantConfirm" (click)="cancelDeleteVariant()">
+  <div class="modal modal-sm" (click)="$event.stopPropagation()">
+    <div class="modal-header">
+      <h3>Eliminar Variante</h3>
+      <button class="close-btn" (click)="cancelDeleteVariant()">
+        <span class="material-icons">close</span>
+      </button>
+    </div>
+    <div class="modal-body">
+      <p class="delete-message">
+        ¿Eliminar la variante <strong>{{ variantToDelete?.sku }}</strong>?
+      </p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" (click)="cancelDeleteVariant()">Cancelar</button>
+      <button class="btn-danger" (click)="deleteVariant()">Eliminar</button>
     </div>
   </div>
 </div>

@@ -2,6 +2,7 @@ export * from './category.service';
 export * from './subcategory.service';
 export * from './speciality.service';
 export * from './product.service';
+export * from './product-variant.service';
 export * from './provider.service';
 export * from './order.service';
 export * from './provider-category.service';

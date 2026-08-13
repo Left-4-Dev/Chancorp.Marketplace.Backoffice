@@ -72,8 +72,12 @@ const routes: Routes = [
         loadChildren: () => import('./features/provider-reviews/provider-reviews.module').then(m => m.ProviderReviewsModule) 
       },
       { 
+        path: 'provider/settings/profile', 
+        loadChildren: () => import('./features/provider-profile/provider-profile.module').then(m => m.ProviderProfileModule) 
+      },
+      { 
         path: 'provider/dashboard', 
-        redirectTo: 'provider/products', 
+        loadChildren: () => import('./features/dashboard/dashboard.module').then(m => m.DashboardModule), 
         pathMatch: 'full' 
       }
     ]

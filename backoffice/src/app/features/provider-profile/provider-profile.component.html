@@ -1,0 +1,137 @@
+<div class="profile-container">
+  <div class="profile-header">
+    <h2>Mi Perfil</h2>
+    <p class="subtitle">Aquí puedes editar tu perfil y ver tu información personal.</p>
+  </div>
+
+  <!-- Loading -->
+  <div class="loading-state" *ngIf="isLoading">
+    <span class="material-icons spinning">sync</span>
+    <p>Cargando perfil...</p>
+  </div>
+
+  <!-- Messages -->
+  <div class="alert alert-success" *ngIf="successMessage">
+    <span class="material-icons">check_circle</span>
+    {{ successMessage }}
+  </div>
+  <div class="alert alert-error" *ngIf="errorMessage">
+    <span class="material-icons">error</span>
+    {{ errorMessage }}
+  </div>
+
+  <!-- Profile Card -->
+  <div class="profile-card" *ngIf="provider && !isLoading">
+
+    <!-- Read Mode -->
+    <div class="profile-fields" *ngIf="!isEditing">
+      <div class="field-row">
+        <span class="field-label">Empresa</span>
+        <span class="field-value">{{ provider.enterpriseName }}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Tipo de Proveedor</span>
+        <span class="field-value">{{ provider.providerType }}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Teléfono</span>
+        <span class="field-value">{{ provider.phone }}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">E-mail</span>
+        <span class="field-value">{{ provider.userEmail }}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Sector</span>
+        <span class="field-value">{{ provider.sector }}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Tipo de Documento</span>
+        <span class="field-value">{{ provider.docType }}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Nro. de Documento</span>
+        <span class="field-value">{{ provider.docNumber }}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">País</span>
+        <span class="field-value">{{ provider.countryCode }}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Región</span>
+        <span class="field-value">{{ provider.region }}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Dirección</span>
+        <span class="field-value">{{ provider.address }}</span>
+      </div>
+      <div class="field-row">
+        <span class="field-label">Sitio Web</span>
+        <span class="field-value">{{ provider.website }}</span>
+      </div>
+
+      <button class="btn btn-primary" (click)="toggleEdit()">
+        <span class="material-icons">edit</span>
+        Editar perfil
+      </button>
+    </div>
+
+    <!-- Edit Mode -->
+    <div class="profile-fields edit-mode" *ngIf="isEditing">
+      <div class="field-row">
+        <label class="field-label">Empresa</label>
+        <input type="text" class="field-input" [(ngModel)]="editForm.enterpriseName" />
+      </div>
+      <div class="field-row">
+        <label class="field-label">Tipo de Proveedor</label>
+        <input type="text" class="field-input" [(ngModel)]="editForm.providerType" />
+      </div>
+      <div class="field-row">
+        <label class="field-label">Teléfono</label>
+        <input type="text" class="field-input" [(ngModel)]="editForm.phone" />
+      </div>
+      <div class="field-row">
+        <label class="field-label">E-mail</label>
+        <input type="email" class="field-input disabled" [value]="provider.userEmail" disabled />
+      </div>
+      <div class="field-row">
+        <label class="field-label">Sector</label>
+        <input type="text" class="field-input" [(ngModel)]="editForm.sector" />
+      </div>
+      <div class="field-row">
+        <label class="field-label">Tipo de Documento</label>
+        <input type="text" class="field-input" [(ngModel)]="editForm.docType" />
+      </div>
+      <div class="field-row">
+        <label class="field-label">Nro. de Documento</label>
+        <input type="text" class="field-input" [(ngModel)]="editForm.docNumber" />
+      </div>
+      <div class="field-row">
+        <label class="field-label">País</label>
+        <input type="text" class="field-input" [(ngModel)]="editForm.countryCode" />
+      </div>
+      <div class="field-row">
+        <label class="field-label">Región</label>
+        <input type="text" class="field-input" [(ngModel)]="editForm.region" />
+      </div>
+      <div class="field-row">
+        <label class="field-label">Dirección</label>
+        <input type="text" class="field-input" [(ngModel)]="editForm.address" />
+      </div>
+      <div class="field-row">
+        <label class="field-label">Sitio Web</label>
+        <input type="url" class="field-input" [(ngModel)]="editForm.website" />
+      </div>
+
+      <div class="action-buttons">
+        <button class="btn btn-primary" (click)="saveProfile()" [disabled]="isSaving">
+          <span class="material-icons spinning" *ngIf="isSaving">sync</span>
+          {{ isSaving ? 'Guardando...' : 'Guardar' }}
+        </button>
+        <button class="btn btn-secondary" (click)="cancelEdit()" [disabled]="isSaving">
+          Cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>

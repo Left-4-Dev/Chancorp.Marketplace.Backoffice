@@ -1,6 +1,6 @@
 import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { ProductDto, ProviderCategoryDto, SubCategoryDto, SpecialityDto, FILE_LIMITS } from '../../core/models';
-import { ProductService, ProviderCategoryService, SubCategoryService, SpecialityService, RoleService } from '../../core/services';
+import { ProductDto, ProductVariantDto, PrimaryAttributeDto, ProviderCategoryDto, SubCategoryDto, SpecialityDto, FILE_LIMITS } from '../../core/models';
+import { ProductService, ProductVariantService, ProviderCategoryService, SubCategoryService, SpecialityService, RoleService } from '../../core/services';
 
 @Component({
   selector: 'app-provider-products',
@@ -45,6 +45,10 @@ export class ProviderProductsComponent implements OnInit {
   loadingModalSubcategories = false;
   modalSpecialities: SpecialityDto[] = [];
   loadingModalSpecialities = false;
+
+  // Modal Eliminar
+  showDeleteConfirm = false;
+  productToDelete: ProductDto | null = null;
   saving = false;
 
   // Archivos
@@ -59,20 +63,40 @@ export class ProviderProductsComponent implements OnInit {
   existingVideoUrl = '';
   fileError = '';
 
-  // Drag states
   dragOverImages = false;
   dragOverCatalog = false;
   dragOverVideo = false;
 
-  // Límites expuestos al template
-  readonly limits = FILE_LIMITS;
+  // Datasheet — solo producto simple
+  datasheetEntries: { key: string; value: string }[] = [];
 
-  // Modal Eliminar
-  showDeleteConfirm = false;
-  productToDelete: ProductDto | null = null;
+  // Primary Attributes — solo producto con variantes
+  primaryAttributes: PrimaryAttributeDto[] = [];
+
+  // Variants management
+  variants: ProductVariantDto[] = [];
+  variantsCurrentPage = 1;
+  variantsTotalPages = 1;
+  variantsTotalCount = 0;
+  loadingVariants = false;
+
+  // Variant CRUD Modal
+  showVariantModal = false;
+  variantModalMode: 'create' | 'edit' = 'create';
+  selectedVariant: ProductVariantDto | null = null;
+  variantFormData: any = {};
+  variantSecondaryEntries: { key: string; value: string }[] = [];
+  savingVariant = false;
+
+  // Delete variant
+  showDeleteVariantConfirm = false;
+  variantToDelete: ProductVariantDto | null = null;
+
+  readonly limits = FILE_LIMITS;
 
   constructor(
     private productService: ProductService,
+    private productVariantService: ProductVariantService,
     private providerCategoryService: ProviderCategoryService,
     private subcategoryService: SubCategoryService,
     private specialityService: SpecialityService,
@@ -153,10 +177,7 @@ export class ProviderProductsComponent implements OnInit {
   }
 
   searchProducts(): void {
-    if (!this.canSearch()) {
-      this.error = 'Debe seleccionar Categoría, Subcategoría y Especialidad';
-      return;
-    }
+    if (!this.canSearch()) return;
     this.currentPage = 1;
     this.loadProducts();
   }
@@ -166,12 +187,7 @@ export class ProviderProductsComponent implements OnInit {
     this.error = '';
     this.hasSearched = true;
 
-    this.productService.getAll(
-      this.providerId,
-      this.selectedSpecialityId!,
-      this.currentPage,
-      this.pageSize
-    ).subscribe({
+    this.productService.getAll(this.providerId, this.selectedSpecialityId!, this.currentPage, this.pageSize).subscribe({
       next: (response) => {
         if (response.success && response.data) {
           this.products = response.data.items;
@@ -187,11 +203,10 @@ export class ProviderProductsComponent implements OnInit {
         this.loading = false;
         this.cdr.detectChanges();
       },
-      error: (err) => {
+      error: () => {
         this.error = 'Error de conexión al cargar productos';
         this.loading = false;
         this.cdr.detectChanges();
-        console.error(err);
       }
     });
   }
@@ -202,6 +217,7 @@ export class ProviderProductsComponent implements OnInit {
     this.modalMode = 'create';
     this.selectedProduct = null;
     this.formData = {
+      providerId: this.providerId,
       categoryId: this.selectedCategoryId,
       subCategoryId: this.selectedSubCategoryId,
       specialityId: this.selectedSpecialityId,
@@ -210,6 +226,7 @@ export class ProviderProductsComponent implements OnInit {
       brand: '',
       description: '',
       countryOrigin: '',
+      hasVariations: false,
       priceProvider: 0,
       priceSale: 0,
       stock: 0,
@@ -222,7 +239,15 @@ export class ProviderProductsComponent implements OnInit {
       state: true
     };
     this.resetFiles();
-    this.loadModalCategories();
+    this.loadModalCategories(() => {
+      if (this.formData.categoryId) {
+        this.loadModalSubcategories(this.formData.categoryId, () => {
+          if (this.formData.subCategoryId) {
+            this.loadModalSpecialities(this.formData.subCategoryId);
+          }
+        });
+      }
+    });
     this.showModal = true;
   }
 
@@ -236,20 +261,22 @@ export class ProviderProductsComponent implements OnInit {
     const catId = sub ? sub.categoryId : this.selectedCategoryId;
 
     this.formData = {
+      providerId: this.providerId,
       categoryId: catId,
       subCategoryId: subCatId,
       specialityId: product.specialityId,
       name: product.name,
-      sku: product.sku,
+      sku: product.sku || '',
       brand: product.brand,
       description: product.description,
       countryOrigin: product.countryOrigin,
-      priceProvider: product.priceProvider,
-      priceSale: product.priceSale,
-      stock: product.stock,
+      hasVariations: product.hasVariations,
+      priceProvider: product.priceProvider || 0,
+      priceSale: product.priceSale || 0,
+      stock: product.stock || 0,
       warrantyTime: product.warrantyTime,
       hasWarranty: product.hasWarranty,
-      discount: product.discount,
+      discount: product.discount || 0,
       isNew: product.isNew,
       isOfferUnique: product.isOfferUnique,
       showPrice: product.showPrice,
@@ -258,19 +285,27 @@ export class ProviderProductsComponent implements OnInit {
 
     this.resetFiles();
     this.existingImageUrls = product.productImg ? [...product.productImg] : [];
-    this.existingCatalogUrl = product.catalog || '';
+    this.existingCatalogUrl = product.catalogPdf || '';
     this.existingVideoUrl = product.productVideo || '';
+
+    if (!product.hasVariations && product.attributes && typeof product.attributes === 'object') {
+      this.datasheetEntries = Object.entries(product.attributes).map(([key, value]) => ({
+        key, value: String(value)
+      }));
+    }
+
+    if (product.hasVariations && product.primaryAttributes) {
+      this.primaryAttributes = product.primaryAttributes.map(a => ({ name: a.name, options: [...a.options] }));
+      this.loadVariants(1);
+    }
 
     this.loadModalCategories(() => {
       if (catId) {
         this.loadModalSubcategories(catId, () => {
-          if (subCatId) {
-            this.loadModalSpecialities(subCatId);
-          }
+          if (subCatId) this.loadModalSpecialities(subCatId);
         });
       }
     });
-
     this.showModal = true;
   }
 
@@ -292,6 +327,12 @@ export class ProviderProductsComponent implements OnInit {
     this.videoFileName = '';
     this.existingVideoUrl = '';
     this.fileError = '';
+    this.datasheetEntries = [];
+    this.primaryAttributes = [];
+    this.variants = [];
+    this.variantsCurrentPage = 1;
+    this.variantsTotalPages = 1;
+    this.variantsTotalCount = 0;
   }
 
   loadModalCategories(callback?: () => void): void {
@@ -318,7 +359,6 @@ export class ProviderProductsComponent implements OnInit {
     this.formData.specialityId = null;
     this.modalSubcategories = [];
     this.modalSpecialities = [];
-
     if (!this.formData.categoryId) return;
     this.loadModalSubcategories(this.formData.categoryId);
   }
@@ -344,7 +384,6 @@ export class ProviderProductsComponent implements OnInit {
   onModalSubCategoryChange(): void {
     this.formData.specialityId = null;
     this.modalSpecialities = [];
-
     if (!this.formData.subCategoryId) return;
     this.loadModalSpecialities(this.formData.subCategoryId);
   }
@@ -369,319 +408,229 @@ export class ProviderProductsComponent implements OnInit {
   saveProduct(): void {
     this.fileError = '';
 
-    if (this.modalMode === 'create') {
-      const fields: Record<string, any> = {
-        providerId: this.providerId,
-        specialityId: this.formData.specialityId,
-        name: this.formData.name,
-        sku: this.formData.sku,
-        brand: this.formData.brand,
-        description: this.formData.description,
-        countryOrigin: this.formData.countryOrigin,
-        priceProvider: Number(this.formData.priceProvider),
-        priceSale: Number(this.formData.priceSale),
-        stock: Number(this.formData.stock),
-        warrantyTime: Number(this.formData.warrantyTime),
-        hasWarranty: this.formData.hasWarranty,
-        discount: Number(this.formData.discount),
-        isNew: this.formData.isNew,
-        isOfferUnique: this.formData.isOfferUnique,
-        showPrice: this.formData.showPrice,
-        state: this.formData.state
-      };
+    const fields: Record<string, any> = {
+      providerId: this.providerId,
+      specialityId: this.formData.specialityId,
+      name: this.formData.name,
+      brand: this.formData.brand,
+      description: this.formData.description,
+      countryOrigin: this.formData.countryOrigin,
+      hasVariations: this.formData.hasVariations,
+      warrantyTime: Number(this.formData.warrantyTime),
+      hasWarranty: this.formData.hasWarranty,
+      isNew: this.formData.isNew,
+      isOfferUnique: this.formData.isOfferUnique,
+      showPrice: this.formData.showPrice,
+      state: this.formData.state
+    };
 
-      this.saving = true;
-      this.productService.create(
-        fields,
-        this.imageFiles.length > 0 ? this.imageFiles : undefined,
-        this.catalogFile || undefined,
-        this.videoFile || undefined
-      ).subscribe({
-        next: (response) => {
-          this.saving = false;
-          if (response.success) {
-            this.closeModal();
-            this.loadProducts();
-          } else {
-            this.error = response.mensaje || 'Error al crear producto';
-            this.cdr.detectChanges();
-          }
-        },
-        error: () => {
-          this.saving = false;
-          this.error = 'Error de conexión al crear producto';
+    if (!this.formData.hasVariations) {
+      fields['sku'] = this.formData.sku;
+      fields['priceProvider'] = Number(this.formData.priceProvider);
+      fields['priceSale'] = Number(this.formData.priceSale);
+      fields['stock'] = Number(this.formData.stock);
+      fields['discount'] = Number(this.formData.discount);
+
+      const attrsObj: Record<string, string> = {};
+      for (const entry of this.datasheetEntries) {
+        const key = entry.key.trim();
+        if (key) attrsObj[key] = entry.value;
+      }
+      if (Object.keys(attrsObj).length > 0) {
+        fields['attributesJson'] = JSON.stringify(attrsObj);
+      }
+    } else {
+      if (this.primaryAttributes.length > 0) {
+        fields['primaryAttributesJson'] = JSON.stringify(this.primaryAttributes);
+      }
+    }
+
+    if (this.modalMode === 'edit') {
+      fields['id'] = this.selectedProduct!.id;
+    }
+
+    this.saving = true;
+    const operation = this.modalMode === 'create'
+      ? this.productService.create(fields, this.imageFiles.length > 0 ? this.imageFiles : undefined, this.catalogFile || undefined, this.videoFile || undefined)
+      : this.productService.update(fields, this.imageFiles.length > 0 ? this.imageFiles : undefined, this.catalogFile || undefined, this.videoFile || undefined);
+
+    operation.subscribe({
+      next: (response) => {
+        this.saving = false;
+        if (response.success) {
+          this.closeModal();
+          this.loadProducts();
+        } else {
+          this.error = response.mensaje || 'Error al guardar producto';
           this.cdr.detectChanges();
         }
+      },
+      error: () => {
+        this.saving = false;
+        this.error = 'Error de conexión al guardar producto';
+        this.cdr.detectChanges();
+      }
+    });
+  }
+
+  // ======== Datasheet ========
+  addDatasheetEntry(): void { this.datasheetEntries.push({ key: '', value: '' }); }
+  removeDatasheetEntry(index: number): void { this.datasheetEntries.splice(index, 1); }
+
+  // ======== Primary Attributes ========
+  addPrimaryAttribute(): void { this.primaryAttributes.push({ name: '', options: [''] }); }
+  removePrimaryAttribute(index: number): void { this.primaryAttributes.splice(index, 1); }
+  addPrimaryAttributeOption(i: number): void { this.primaryAttributes[i].options.push(''); }
+  removePrimaryAttributeOption(i: number, oi: number): void { this.primaryAttributes[i].options.splice(oi, 1); }
+
+  // ======== Variants ========
+  loadVariants(page: number = 1): void {
+    if (!this.selectedProduct) return;
+    this.loadingVariants = true;
+    this.variantsCurrentPage = page;
+    this.productVariantService.getByProductId(this.selectedProduct.id, page, 50).subscribe({
+      next: (response) => {
+        if (response.success && response.data) {
+          this.variants = response.data.items;
+          this.variantsTotalPages = response.data.totalPages;
+          this.variantsTotalCount = response.data.totalCount;
+        }
+        this.loadingVariants = false;
+        this.cdr.detectChanges();
+      },
+      error: () => { this.loadingVariants = false; this.cdr.detectChanges(); }
+    });
+  }
+
+  openVariantModal(mode: 'create' | 'edit', variant?: ProductVariantDto): void {
+    this.variantModalMode = mode;
+    this.selectedVariant = variant || null;
+    if (mode === 'create') {
+      const primarySelection: Record<string, string> = {};
+      this.primaryAttributes.forEach(a => primarySelection[a.name] = '');
+      this.variantFormData = { sku: '', priceProvider: 0, priceSale: 0, stock: 0, discount: 0, state: true, primarySelection };
+      this.variantSecondaryEntries = [];
+    } else if (variant) {
+      this.variantFormData = { sku: variant.sku, priceProvider: variant.priceProvider, priceSale: variant.priceSale, stock: variant.stock, discount: variant.discount, state: variant.state, primarySelection: { ...variant.primarySelection } };
+      this.variantSecondaryEntries = Object.entries(variant.secondaryAttributes || {}).map(([key, value]) => ({ key, value: String(value) }));
+    }
+    this.showVariantModal = true;
+  }
+
+  closeVariantModal(): void { this.showVariantModal = false; this.selectedVariant = null; this.variantFormData = {}; this.variantSecondaryEntries = []; }
+  addVariantSecondaryEntry(): void { this.variantSecondaryEntries.push({ key: '', value: '' }); }
+  removeVariantSecondaryEntry(index: number): void { this.variantSecondaryEntries.splice(index, 1); }
+
+  saveVariant(): void {
+    const secondaryAttributes: Record<string, string> = {};
+    for (const entry of this.variantSecondaryEntries) { const key = entry.key.trim(); if (key) secondaryAttributes[key] = entry.value; }
+    this.savingVariant = true;
+
+    if (this.variantModalMode === 'create') {
+      this.productVariantService.create({ productId: this.selectedProduct!.id, sku: this.variantFormData.sku, primarySelection: this.variantFormData.primarySelection, secondaryAttributes, priceProvider: Number(this.variantFormData.priceProvider), priceSale: Number(this.variantFormData.priceSale), stock: Number(this.variantFormData.stock), discount: Number(this.variantFormData.discount), state: this.variantFormData.state }).subscribe({
+        next: (r) => { this.savingVariant = false; if (r.success) { this.closeVariantModal(); this.loadVariants(this.variantsCurrentPage); } else { this.error = r.mensaje || 'Error'; this.cdr.detectChanges(); } },
+        error: () => { this.savingVariant = false; this.error = 'Error de conexión'; this.cdr.detectChanges(); }
       });
     } else {
-      const fields: Record<string, any> = {
-        id: this.selectedProduct!.id,
-        providerId: this.providerId,
-        specialityId: this.formData.specialityId,
-        name: this.formData.name,
-        sku: this.formData.sku,
-        brand: this.formData.brand,
-        description: this.formData.description,
-        countryOrigin: this.formData.countryOrigin,
-        priceProvider: Number(this.formData.priceProvider),
-        priceSale: Number(this.formData.priceSale),
-        stock: Number(this.formData.stock),
-        warrantyTime: Number(this.formData.warrantyTime),
-        hasWarranty: this.formData.hasWarranty,
-        discount: Number(this.formData.discount),
-        isNew: this.formData.isNew,
-        isOfferUnique: this.formData.isOfferUnique,
-        showPrice: this.formData.showPrice,
-        state: this.formData.state
-      };
-
-      this.saving = true;
-      this.productService.update(
-        fields,
-        this.imageFiles.length > 0 ? this.imageFiles : undefined,
-        this.catalogFile || undefined,
-        this.videoFile || undefined
-      ).subscribe({
-        next: (response) => {
-          this.saving = false;
-          if (response.success) {
-            this.closeModal();
-            this.loadProducts();
-          } else {
-            this.error = response.mensaje || 'Error al actualizar producto';
-            this.cdr.detectChanges();
-          }
-        },
-        error: () => {
-          this.saving = false;
-          this.error = 'Error de conexión al actualizar producto';
-          this.cdr.detectChanges();
-        }
+      this.productVariantService.update({ id: this.selectedVariant!.id, sku: this.variantFormData.sku, primarySelection: this.variantFormData.primarySelection, secondaryAttributes, priceProvider: Number(this.variantFormData.priceProvider), priceSale: Number(this.variantFormData.priceSale), stock: Number(this.variantFormData.stock), discount: Number(this.variantFormData.discount), state: this.variantFormData.state }).subscribe({
+        next: (r) => { this.savingVariant = false; if (r.success) { this.closeVariantModal(); this.loadVariants(this.variantsCurrentPage); } else { this.error = r.mensaje || 'Error'; this.cdr.detectChanges(); } },
+        error: () => { this.savingVariant = false; this.error = 'Error de conexión'; this.cdr.detectChanges(); }
       });
     }
   }
 
+  confirmDeleteVariant(variant: ProductVariantDto): void { this.variantToDelete = variant; this.showDeleteVariantConfirm = true; }
+  cancelDeleteVariant(): void { this.showDeleteVariantConfirm = false; this.variantToDelete = null; }
+  deleteVariant(): void {
+    if (!this.variantToDelete) return;
+    this.productVariantService.delete(this.variantToDelete.id).subscribe({
+      next: (r) => { if (r.success) { this.cancelDeleteVariant(); this.loadVariants(this.variantsCurrentPage); } else { this.error = r.mensaje || 'Error'; this.cdr.detectChanges(); } },
+      error: () => { this.error = 'Error de conexión'; this.cdr.detectChanges(); }
+    });
+  }
+
+  getObjectKeys(obj: Record<string, any>): string[] { return Object.keys(obj || {}); }
+
   // ======== File Handling ========
-
-  onImagesSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    if (input.files) {
-      this.addImageFiles(Array.from(input.files));
-      input.value = '';
-    }
-  }
-
-  onImagesDrop(event: DragEvent): void {
-    event.preventDefault();
-    this.dragOverImages = false;
-    if (event.dataTransfer?.files) {
-      this.addImageFiles(Array.from(event.dataTransfer.files));
-    }
-  }
+  onImagesSelected(event: Event): void { const input = event.target as HTMLInputElement; if (input.files) { this.addImageFiles(Array.from(input.files)); input.value = ''; } }
+  onImagesDrop(event: DragEvent): void { event.preventDefault(); this.dragOverImages = false; if (event.dataTransfer?.files) this.addImageFiles(Array.from(event.dataTransfer.files)); }
 
   private addImageFiles(files: File[]): void {
     this.fileError = '';
     const accepted = FILE_LIMITS.IMAGE_ACCEPTED.split(',').map(e => e.trim());
-
     for (const file of files) {
       const ext = '.' + file.name.split('.').pop()!.toLowerCase();
-      if (!accepted.includes(ext)) {
-        this.fileError = `Formato no permitido: ${file.name}. Use ${FILE_LIMITS.IMAGE_ACCEPTED}`;
-        return;
-      }
-      if (file.size > FILE_LIMITS.IMAGE_MAX_SIZE) {
-        this.fileError = `${file.name} excede el límite de 5 MB`;
-        return;
-      }
-      if (this.imageFiles.length >= FILE_LIMITS.IMAGE_MAX_COUNT) {
-        this.fileError = `Máximo ${FILE_LIMITS.IMAGE_MAX_COUNT} imágenes`;
-        return;
-      }
+      if (!accepted.includes(ext)) { this.fileError = `Formato no permitido: ${file.name}`; return; }
+      if (file.size > FILE_LIMITS.IMAGE_MAX_SIZE) { this.fileError = `${file.name} excede 5 MB`; return; }
+      if (this.imageFiles.length >= FILE_LIMITS.IMAGE_MAX_COUNT) { this.fileError = `Máximo ${FILE_LIMITS.IMAGE_MAX_COUNT} imágenes`; return; }
       this.imageFiles.push(file);
       this.imagePreviewUrls.push(URL.createObjectURL(file));
     }
     this.cdr.detectChanges();
   }
 
-  removeImage(index: number): void {
-    URL.revokeObjectURL(this.imagePreviewUrls[index]);
-    this.imageFiles.splice(index, 1);
-    this.imagePreviewUrls.splice(index, 1);
-  }
+  removeImage(index: number): void { URL.revokeObjectURL(this.imagePreviewUrls[index]); this.imageFiles.splice(index, 1); this.imagePreviewUrls.splice(index, 1); }
+  removeExistingImage(index: number): void { this.existingImageUrls.splice(index, 1); }
 
-  removeExistingImage(index: number): void {
-    this.existingImageUrls.splice(index, 1);
-  }
-
-  onCatalogSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    if (input.files && input.files[0]) {
-      this.setCatalogFile(input.files[0]);
-      input.value = '';
-    }
-  }
-
-  onCatalogDrop(event: DragEvent): void {
-    event.preventDefault();
-    this.dragOverCatalog = false;
-    if (event.dataTransfer?.files[0]) {
-      this.setCatalogFile(event.dataTransfer.files[0]);
-    }
-  }
+  onCatalogSelected(event: Event): void { const input = event.target as HTMLInputElement; if (input.files && input.files[0]) { this.setCatalogFile(input.files[0]); input.value = ''; } }
+  onCatalogDrop(event: DragEvent): void { event.preventDefault(); this.dragOverCatalog = false; if (event.dataTransfer?.files[0]) this.setCatalogFile(event.dataTransfer.files[0]); }
 
   private setCatalogFile(file: File): void {
     this.fileError = '';
-    const ext = '.' + file.name.split('.').pop()!.toLowerCase();
-    if (ext !== '.pdf') {
-      this.fileError = 'El catálogo debe ser un archivo PDF';
-      return;
-    }
-    if (file.size > FILE_LIMITS.CATALOG_MAX_SIZE) {
-      this.fileError = `El catálogo excede el límite de 10 MB`;
-      return;
-    }
-    this.catalogFile = file;
-    this.catalogFileName = file.name;
-    this.existingCatalogUrl = '';
-    this.cdr.detectChanges();
+    if (!file.name.toLowerCase().endsWith('.pdf')) { this.fileError = 'Solo archivos PDF'; return; }
+    if (file.size > FILE_LIMITS.CATALOG_MAX_SIZE) { this.fileError = 'Catálogo excede 10 MB'; return; }
+    this.catalogFile = file; this.catalogFileName = file.name; this.existingCatalogUrl = ''; this.cdr.detectChanges();
   }
 
-  removeCatalog(): void {
-    this.catalogFile = null;
-    this.catalogFileName = '';
-  }
+  removeCatalog(): void { this.catalogFile = null; this.catalogFileName = ''; }
+  removeExistingCatalog(): void { this.existingCatalogUrl = ''; }
 
-  removeExistingCatalog(): void {
-    this.existingCatalogUrl = '';
-  }
-
-  onVideoSelected(event: Event): void {
-    const input = event.target as HTMLInputElement;
-    if (input.files && input.files[0]) {
-      this.setVideoFile(input.files[0]);
-      input.value = '';
-    }
-  }
-
-  onVideoDrop(event: DragEvent): void {
-    event.preventDefault();
-    this.dragOverVideo = false;
-    if (event.dataTransfer?.files[0]) {
-      this.setVideoFile(event.dataTransfer.files[0]);
-    }
-  }
+  onVideoSelected(event: Event): void { const input = event.target as HTMLInputElement; if (input.files && input.files[0]) { this.setVideoFile(input.files[0]); input.value = ''; } }
+  onVideoDrop(event: DragEvent): void { event.preventDefault(); this.dragOverVideo = false; if (event.dataTransfer?.files[0]) this.setVideoFile(event.dataTransfer.files[0]); }
 
   private setVideoFile(file: File): void {
     this.fileError = '';
-    const ext = '.' + file.name.split('.').pop()!.toLowerCase();
     const accepted = FILE_LIMITS.VIDEO_ACCEPTED.split(',').map(e => e.trim());
-    if (!accepted.includes(ext)) {
-      this.fileError = `Formato de video no permitido. Use ${FILE_LIMITS.VIDEO_ACCEPTED}`;
-      return;
-    }
-    if (file.size > FILE_LIMITS.VIDEO_MAX_SIZE) {
-      this.fileError = `El video excede el límite de 50 MB`;
-      return;
-    }
-
-    // Validar duración del video
+    const ext = '.' + file.name.split('.').pop()!.toLowerCase();
+    if (!accepted.includes(ext)) { this.fileError = 'Formato de video no permitido'; return; }
+    if (file.size > FILE_LIMITS.VIDEO_MAX_SIZE) { this.fileError = 'Video excede 50 MB'; return; }
     const videoEl = document.createElement('video');
     videoEl.preload = 'metadata';
-    videoEl.onloadedmetadata = () => {
-      URL.revokeObjectURL(videoEl.src);
-      if (videoEl.duration > FILE_LIMITS.VIDEO_MAX_DURATION) {
-        this.fileError = `El video dura ${Math.round(videoEl.duration)}s. Máximo: ${FILE_LIMITS.VIDEO_MAX_DURATION}s`;
-        this.videoFile = null;
-        this.videoFileName = '';
-        this.cdr.detectChanges();
-        return;
-      }
-      this.cdr.detectChanges();
-    };
+    videoEl.onloadedmetadata = () => { URL.revokeObjectURL(videoEl.src); if (videoEl.duration > FILE_LIMITS.VIDEO_MAX_DURATION) { this.fileError = `Video: ${Math.round(videoEl.duration)}s > ${FILE_LIMITS.VIDEO_MAX_DURATION}s`; this.videoFile = null; this.videoFileName = ''; this.cdr.detectChanges(); } else { this.cdr.detectChanges(); } };
     videoEl.src = URL.createObjectURL(file);
-
-    this.videoFile = file;
-    this.videoFileName = file.name;
-    this.existingVideoUrl = '';
-    this.cdr.detectChanges();
+    this.videoFile = file; this.videoFileName = file.name; this.existingVideoUrl = ''; this.cdr.detectChanges();
   }
 
-  removeVideo(): void {
-    this.videoFile = null;
-    this.videoFileName = '';
-  }
-
-  removeExistingVideo(): void {
-    this.existingVideoUrl = '';
-  }
-
-  onDragOver(event: DragEvent): void {
-    event.preventDefault();
-  }
-
-  formatFileSize(bytes: number): string {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
+  removeVideo(): void { this.videoFile = null; this.videoFileName = ''; }
+  removeExistingVideo(): void { this.existingVideoUrl = ''; }
+  onDragOver(event: DragEvent): void { event.preventDefault(); }
+  formatFileSize(bytes: number): string { if (bytes < 1024) return bytes + ' B'; if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB'; return (bytes / 1048576).toFixed(1) + ' MB'; }
 
   // ======== Delete ========
-
-  confirmDelete(product: ProductDto): void {
-    this.productToDelete = product;
-    this.showDeleteConfirm = true;
-  }
-
-  cancelDelete(): void {
-    this.showDeleteConfirm = false;
-    this.productToDelete = null;
-  }
-
+  confirmDelete(product: ProductDto): void { this.productToDelete = product; this.showDeleteConfirm = true; }
+  cancelDelete(): void { this.showDeleteConfirm = false; this.productToDelete = null; }
   deleteProduct(): void {
     if (!this.productToDelete) return;
-
     this.productService.delete(this.productToDelete.id).subscribe({
-      next: (response) => {
-        if (response.success) {
-          this.cancelDelete();
-          this.loadProducts();
-        } else {
-          this.error = response.mensaje || 'Error al eliminar producto';
-          this.cdr.detectChanges();
-        }
-      },
-      error: () => {
-        this.error = 'Error de conexión al eliminar producto';
-        this.cdr.detectChanges();
-      }
+      next: (r) => { if (r.success) { this.cancelDelete(); this.loadProducts(); } else { this.error = r.mensaje || 'Error'; this.cdr.detectChanges(); } },
+      error: () => { this.error = 'Error de conexión'; this.cdr.detectChanges(); }
     });
   }
 
-  // ======== Helpers ========
-
-  getSpecialityName(specialityId: number): string {
-    const sp = this.specialities.find(s => s.id === specialityId);
-    return sp ? sp.name : `Esp #${specialityId}`;
-  }
-
-  changePage(page: number): void {
-    if (page >= 1 && page <= this.totalPages) {
-      this.currentPage = page;
-      this.loadProducts();
-    }
-  }
-
+  // ======== Paginación ========
+  changePage(page: number): void { if (page >= 1 && page <= this.totalPages) { this.currentPage = page; this.loadProducts(); } }
   getPages(): number[] {
     const pages: number[] = [];
     const maxVisible = 5;
     let start = Math.max(1, this.currentPage - Math.floor(maxVisible / 2));
     let end = Math.min(this.totalPages, start + maxVisible - 1);
-    if (end - start + 1 < maxVisible) {
-      start = Math.max(1, end - maxVisible + 1);
-    }
-    for (let i = start; i <= end; i++) {
-      pages.push(i);
-    }
+    if (end - start + 1 < maxVisible) start = Math.max(1, end - maxVisible + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
     return pages;
+  }
+
+  getSpecialityName(id: number): string {
+    const sp = this.specialities.find(s => s.id === id);
+    return sp ? sp.name : `#${id}`;
   }
 }

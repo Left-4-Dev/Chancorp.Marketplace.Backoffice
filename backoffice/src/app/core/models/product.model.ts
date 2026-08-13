@@ -1,3 +1,7 @@
+// ═══════════════════════════════════════════════════════════
+// PRODUCTO (colección: products)
+// ═══════════════════════════════════════════════════════════
+
 export interface ProductDto {
   id: string;
   providerId: number;
@@ -7,17 +11,24 @@ export interface ProductDto {
   brand: string;
   description: string;
   countryOrigin: string;
-  priceProvider: number;
-  priceSale: number;
-  stock: number;
-  datasheet?: Record<string, any>;
-  variations?: Record<string, any>[];
-  catalog: string;
   productImg: string[];
   productVideo: string;
+  catalogPdf: string;
+  hasVariations: boolean;
+
+  // Solo producto simple (hasVariations = false)
+  priceProvider?: number | null;
+  priceSale?: number | null;
+  stock?: number | null;
+  discount?: number | null;
+  attributes?: Record<string, any> | null;
+
+  // Solo producto con variantes (hasVariations = true)
+  primaryAttributes?: PrimaryAttributeDto[] | null;
+
+  // Comunes
   warrantyTime: number;
   hasWarranty: boolean;
-  discount: number;
   isNew: boolean;
   isOfferUnique: boolean;
   showPrice: boolean;
@@ -26,7 +37,69 @@ export interface ProductDto {
   updatedAt: string;
 }
 
-// Campos escalares para construir FormData en create
+export interface PrimaryAttributeDto {
+  name: string;
+  options: string[];
+}
+
+// Respuesta de GET /api/Products/{id}
+export interface ProductDetailResponse {
+  product: ProductDto;
+  variants: ProductVariantDto[] | null;
+}
+
+// ═══════════════════════════════════════════════════════════
+// VARIANTE DE PRODUCTO (colección: productVariants)
+// ═══════════════════════════════════════════════════════════
+
+export interface ProductVariantDto {
+  id: string;
+  productId: string;
+  sku: string;
+  primarySelection: Record<string, any>;
+  secondaryAttributes: Record<string, any>;
+  priceProvider: number;
+  priceSale: number;
+  stock: number;
+  discount: number;
+  state: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProductVariantRequest {
+  productId: string;
+  sku: string;
+  primarySelection: Record<string, any>;
+  secondaryAttributes: Record<string, any>;
+  priceProvider: number;
+  priceSale: number;
+  stock: number;
+  discount: number;
+  state: boolean;
+}
+
+export interface UpdateProductVariantRequest {
+  id: string;
+  sku?: string;
+  primarySelection?: Record<string, any>;
+  secondaryAttributes?: Record<string, any>;
+  priceProvider?: number;
+  priceSale?: number;
+  stock?: number;
+  discount?: number;
+  state?: boolean;
+}
+
+export interface BulkCreateVariantsRequest {
+  productId: string;
+  variants: Omit<CreateProductVariantRequest, 'productId'>[];
+}
+
+// ═══════════════════════════════════════════════════════════
+// CAMPOS PARA FORMDATA (CREATE/UPDATE)
+// ═══════════════════════════════════════════════════════════
+
 export interface CreateProductFields {
   providerId: number;
   specialityId: number;
@@ -35,21 +108,24 @@ export interface CreateProductFields {
   brand: string;
   description: string;
   countryOrigin: string;
-  priceProvider: number;
-  priceSale: number;
-  stock: number;
-  datasheetJson?: string;
-  variationsJson?: string;
+  hasVariations: boolean;
+  // Solo simple
+  priceProvider?: number;
+  priceSale?: number;
+  stock?: number;
+  discount?: number;
+  attributesJson?: string;
+  // Solo variantes
+  primaryAttributesJson?: string;
+  // Comunes
   warrantyTime: number;
   hasWarranty: boolean;
-  discount: number;
   isNew: boolean;
   isOfferUnique: boolean;
   showPrice: boolean;
   state: boolean;
 }
 
-// Campos escalares para construir FormData en update (parcial + id obligatorio)
 export interface UpdateProductFields {
   id: string;
   providerId?: number;
@@ -59,14 +135,15 @@ export interface UpdateProductFields {
   brand?: string;
   description?: string;
   countryOrigin?: string;
+  hasVariations?: boolean;
   priceProvider?: number;
   priceSale?: number;
   stock?: number;
-  datasheetJson?: string;
-  variationsJson?: string;
+  discount?: number;
+  attributesJson?: string;
+  primaryAttributesJson?: string;
   warrantyTime?: number;
   hasWarranty?: boolean;
-  discount?: number;
   isNew?: boolean;
   isOfferUnique?: boolean;
   showPrice?: boolean;

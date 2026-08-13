@@ -85,4 +85,8 @@ export class RoleService {
       email: ''
     });
   }
+
+  updateDisplayName(name: string): void {
+    this.currentSession$.next({ ...this.session, displayName: name });
+  }
 }
