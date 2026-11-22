@@ -31,14 +31,20 @@ export class AuthGuard implements CanActivate {
     if (!this.roleService.userId) {
       try {
         const response = await firstValueFrom(this.authService.sync());
-        if (response.success && response.data && response.data.isRegistered) {
-          this.roleService.setSessionFromSync(response.data);
+        const data = response.data;
+        // Only Admin and Provider may use the backoffice.
+        if (response.success && data && data.isRegistered && (data.type === 'Admin' || data.type === 'Provider')) {
+          this.roleService.setSessionFromSync(data);
+          // Force a fresh token so API calls carry the role claim written during sync.
+          await this.clerkService.refreshToken();
         } else {
+          this.roleService.clearSession();
           await this.clerkService.signOut();
           this.router.navigate(['/login']);
           return false;
         }
       } catch {
+        this.roleService.clearSession();
         await this.clerkService.signOut();
         this.router.navigate(['/login']);
         return false;

@@ -453,7 +453,7 @@ export class ProviderOrdersComponent implements OnInit {
       brand: item.product.brand,
       sku: item.variantSku || item.product.sku,
       productImg: item.product.productImg?.length ? item.product.productImg[0] : '',
-      providerName: this.roleService.session.displayName,
+      providerName: this.roleService.session?.displayName ?? '',
       state: true
     };
 

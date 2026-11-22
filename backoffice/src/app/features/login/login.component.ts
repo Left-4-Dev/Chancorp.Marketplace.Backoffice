@@ -80,7 +80,7 @@ export class LoginComponent implements OnInit, OnDestroy, AfterViewInit {
     this.error = '';
 
     this.authService.sync().subscribe({
-      next: (response) => {
+      next: async (response) => {
         if (!response.success || !response.data) {
           this.error = response.mensaje || 'Error al sincronizar el usuario';
           this.syncing = false;
@@ -106,6 +106,9 @@ export class LoginComponent implements OnInit, OnDestroy, AfterViewInit {
 
         // Establecer sesión real en RoleService
         this.roleService.setSessionFromSync(syncData);
+
+        // Forzar un token nuevo para que las llamadas a la API incluyan el claim `role` escrito durante el sync
+        await this.clerkService.refreshToken();
 
         // Redirigir según tipo
         if (syncData.type === 'Admin') {

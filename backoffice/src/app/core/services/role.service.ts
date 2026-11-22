@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { Router } from '@angular/router';
-import { BehaviorSubject } from 'rxjs';
+import { BehaviorSubject, filter } from 'rxjs';
 import { SyncResponse, ProviderProfile } from '../models/auth.model';
 
 export type UserRole = 'admin' | 'provider';
@@ -17,24 +17,22 @@ export interface UserSession {
   providedIn: 'root'
 })
 export class RoleService {
-  private currentSession$ = new BehaviorSubject<UserSession>({
-    role: 'admin',
-    userId: null,
-    providerId: null,
-    displayName: '',
-    email: ''
-  });
+  // No role until the backend sync confirms Admin or Provider (null = unauthenticated).
+  private currentSession$ = new BehaviorSubject<UserSession | null>(null);
 
-  session$ = this.currentSession$.asObservable();
+  // Emits only confirmed sessions, so subscribers never see a role that was not verified.
+  session$ = this.currentSession$.pipe(
+    filter((session): session is UserSession => session !== null)
+  );
 
   constructor(private router: Router) {}
 
-  get session(): UserSession {
+  get session(): UserSession | null {
     return this.currentSession$.value;
   }
 
-  get role(): UserRole {
-    return this.session.role;
+  get role(): UserRole | null {
+    return this.session?.role ?? null;
   }
 
   get isAdmin(): boolean {
@@ -46,11 +44,11 @@ export class RoleService {
   }
 
   get providerId(): number {
-    return this.session.providerId ?? 0;
+    return this.session?.providerId ?? 0;
   }
 
   get userId(): number {
-    return this.session.userId ?? 0;
+    return this.session?.userId ?? 0;
   }
 
   /** Establecer sesión desde la respuesta del endpoint /api/Auth/sync */
@@ -77,16 +75,12 @@ export class RoleService {
 
   /** Limpiar sesión al hacer logout */
   clearSession(): void {
-    this.currentSession$.next({
-      role: 'admin',
-      userId: null,
-      providerId: null,
-      displayName: '',
-      email: ''
-    });
+    this.currentSession$.next(null);
   }
 
   updateDisplayName(name: string): void {
-    this.currentSession$.next({ ...this.session, displayName: name });
+    const session = this.session;
+    if (!session) return;
+    this.currentSession$.next({ ...session, displayName: name });
   }
 }

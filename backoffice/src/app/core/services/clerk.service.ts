@@ -87,6 +87,20 @@ export class ClerkService {
     }
   }
 
+  /**
+   * Forces a fresh session token (bypassing Clerk's cache) so the claims written to
+   * public_metadata during sync (role, providerId, clientId) are present in subsequent API calls.
+   * Best effort: a failure here must not break the sign-in flow.
+   */
+  async refreshToken(): Promise<void> {
+    if (!this.clerk?.session) return;
+    try {
+      await this.clerk.session.getToken({ skipCache: true });
+    } catch (err) {
+      console.error('No se pudo refrescar el token de sesión:', err);
+    }
+  }
+
   mountSignIn(element: HTMLDivElement): void {
     this.clerk?.mountSignIn(element, {
       appearance: {

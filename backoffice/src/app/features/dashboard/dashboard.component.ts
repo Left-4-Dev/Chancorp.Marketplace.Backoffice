@@ -76,7 +76,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   retryMetrics(): void {
-    const providerId = this.roleService.session.providerId;
+    const providerId = this.roleService.providerId;
     if (providerId) this.loadMetrics(providerId);
   }
 
