@@ -87,7 +87,6 @@ export class ProvidersComponent implements OnInit {
     this.selectedProvider = null;
     this.formData = {
       userEmail: '',
-      userPassword: '',
       enterpriseName: '',
       providerType: '',
       phone: '',
@@ -131,7 +130,6 @@ export class ProvidersComponent implements OnInit {
     if (this.modalMode === 'create') {
       const request: CreateProviderRequest = {
         userEmail: this.formData.userEmail,
-        userPassword: this.formData.userPassword,
         enterpriseName: this.formData.enterpriseName,
         providerType: this.formData.providerType,
         phone: this.formData.phone,

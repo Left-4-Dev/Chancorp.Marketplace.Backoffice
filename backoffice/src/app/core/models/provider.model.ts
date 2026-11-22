@@ -21,7 +21,6 @@ export interface ProviderDto {
 
 export interface CreateProviderRequest {
   userEmail: string;
-  userPassword: string;
   enterpriseName: string;
   providerType: string;
   phone: string;
